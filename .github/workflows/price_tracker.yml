@@ -23,6 +23,6 @@ jobs:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          CELLPHONES_URL: ${{ vars.CELLPHONES_URL }}
+      
           MIN_CHANGE_PCT: ${{ vars.MIN_CHANGE_PCT }}
         run: python tracker.py
