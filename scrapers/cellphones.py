@@ -59,92 +59,180 @@ def extract_prices(text):
 
 
 # =========================================================
-# CELLPHONES STOCK
+# PROVINCE POPUP
 # =========================================================
+
+def is_province_modal_open(page):
+    try:
+        modal = page.locator(
+            "#change-province"
+        )
+
+        return modal.is_visible()
+
+    except Exception:
+        return False
+
 
 def open_province_modal(page):
     """
-    Open CellphoneS province selection popup.
+    Open CellphoneS province selector.
+
+    IMPORTANT:
+    #change-province is the modal itself, not necessarily
+    the button used to open it.
     """
 
-    modal = page.locator(
-        "#change-province"
-    )
-
-    try:
-        if modal.is_visible():
-            print("Province modal already open.")
-            return True
-    except Exception:
-        pass
+    if is_province_modal_open(page):
+        print("Province modal already open.")
+        return True
 
     print("Opening province modal...")
 
-    # Click current province / province selector
-    selectors = [
-        "#change-province",
-        "[data-target='#change-province']",
-        "text=Hồ Chí Minh",
-    ]
+    # -----------------------------------------------------
+    # Try known CellphoneS province/location selectors
+    # -----------------------------------------------------
 
-    clicked = False
+    selectors = [
+        "text=Hồ Chí Minh",
+        "text=Chọn khu vực",
+        "text=Chọn tỉnh",
+        "[class*='province']",
+        "[class*='location']",
+        "[class*='address']",
+    ]
 
     for selector in selectors:
 
         try:
-            locator = page.locator(selector).first
 
-            if locator.is_visible():
-                locator.click()
-                clicked = True
-                break
+            locator = page.locator(
+                selector
+            ).first
+
+            if not locator.is_visible():
+                continue
+
+            locator.click()
+
+            page.wait_for_timeout(500)
+
+            if is_province_modal_open(page):
+
+                print(
+                    "Province modal opened."
+                )
+
+                return True
 
         except Exception:
             continue
 
-    if not clicked:
-        print("WARNING: Could not click province selector.")
-        return False
+    # -----------------------------------------------------
+    # Last resort:
+    # find visible element that looks like the current
+    # province selector.
+    # -----------------------------------------------------
 
     try:
-        page.locator(
-            "#change-province"
-        ).wait_for(
-            state="visible",
-            timeout=5000
+
+        candidates = page.locator(
+            "button, a, div, span"
         )
 
-        print("Province modal opened.")
-        return True
+        count = candidates.count()
+
+        for i in range(
+            min(count, 500)
+        ):
+
+            element = candidates.nth(i)
+
+            try:
+
+                if not element.is_visible():
+                    continue
+
+                text = (
+                    element.inner_text()
+                    .strip()
+                )
+
+                if (
+                    "Hồ Chí Minh" in text
+                    or "Chọn khu vực" in text
+                    or "Chọn tỉnh" in text
+                ):
+
+                    element.click()
+
+                    page.wait_for_timeout(
+                        500
+                    )
+
+                    if is_province_modal_open(
+                        page
+                    ):
+
+                        print(
+                            "Province modal opened."
+                        )
+
+                        return True
+
+            except Exception:
+                continue
 
     except Exception:
-        print("WARNING: Province modal did not open.")
-        return False
+        pass
 
+    print(
+        "WARNING: Could not open province modal."
+    )
+
+    return False
+
+
+# =========================================================
+# SELECT CITY
+# =========================================================
 
 def select_city(page, city):
-    """
-    Select exact city from CellphoneS province popup.
-    """
 
     if not open_province_modal(page):
         return False
 
-    print(f"Searching province: {city}")
+    print(
+        f"Searching province: {city}"
+    )
 
     search_input = page.locator(
         "#inputSearchProvince input"
     )
 
     try:
-        search_input.fill(city)
-        page.wait_for_timeout(300)
-    except Exception as e:
-        print(
-            f"WARNING: Could not search province "
-            f"{city}: {e}"
+
+        search_input.wait_for(
+            state="visible",
+            timeout=5000
         )
+
+        search_input.fill(city)
+
+        page.wait_for_timeout(300)
+
+    except Exception as e:
+
+        print(
+            f"WARNING: Could not search "
+            f"province {city}: {e}"
+        )
+
         return False
+
+    # -----------------------------------------------------
+    # Find exact city
+    # -----------------------------------------------------
 
     city_elements = page.locator(
         "#change-province li a"
@@ -159,12 +247,14 @@ def select_city(page, city):
     )
 
     if count == 0:
+
         print(
-            f"WARNING: Province not found: {city}"
+            f"WARNING: Province not found: "
+            f"{city}"
         )
+
         return False
 
-    # Click the exact matching city
     clicked = False
 
     for i in range(count):
@@ -172,100 +262,156 @@ def select_city(page, city):
         element = city_elements.nth(i)
 
         try:
-            text = element.inner_text().strip()
+
+            text = (
+                element.inner_text()
+                .strip()
+            )
 
             if text == city:
+
                 element.click()
+
                 clicked = True
+
                 break
 
         except Exception:
             continue
 
-    # Fallback: click first matching element
     if not clicked:
 
         try:
+
             city_elements.first.click()
+
             clicked = True
+
         except Exception:
             pass
 
     if not clicked:
+
         print(
-            f"WARNING: Could not click {city}"
+            f"WARNING: Could not click "
+            f"{city}"
         )
+
         return False
 
-    print(f"{city} clicked.")
+    print(
+        f"{city} clicked."
+    )
+
+    # -----------------------------------------------------
+    # IMPORTANT:
+    # Wait for modal to close.
+    # -----------------------------------------------------
+
+    try:
+
+        page.locator(
+            "#change-province"
+        ).wait_for(
+            state="hidden",
+            timeout=5000
+        )
+
+    except Exception:
+        # Some CellphoneS versions may not hide
+        # immediately. Give the page a little time.
+        pass
+
+    page.wait_for_timeout(1000)
 
     return True
 
 
-def get_stock_count(page, city):
-    """
-    Read stock information after selecting a city.
+# =========================================================
+# STOCK
+# =========================================================
 
-    Returns:
-        integer stock count
-        0 when out of stock
-        None when stock cannot be determined
-    """
+def extract_stock_from_text(text):
+
+    if not text:
+        return None
+
+    # -----------------------------------------------------
+    # IN STOCK
+    # -----------------------------------------------------
+
+    match = re.search(
+        r"Có\s+(\d+)\s+cửa hàng có sản phẩm",
+        text,
+        re.IGNORECASE
+    )
+
+    if match:
+
+        return int(
+            match.group(1)
+        )
+
+    # -----------------------------------------------------
+    # OUT OF STOCK
+    # -----------------------------------------------------
+
+    text_lower = text.lower()
+
+    if (
+        "tạm hết hàng" in text_lower
+        or "tạm hết hàng tại" in text_lower
+    ):
+
+        return 0
+
+    return None
+
+
+def get_stock_count(page, city):
 
     print(
         f"Checking stock for {city}..."
     )
 
-    # CellphoneS needs a little time to update
-    # the stock content after province selection.
-    for _ in range(20):
+    # -----------------------------------------------------
+    # Wait for CellphoneS to update stock.
+    #
+    # We deliberately do NOT immediately accept whatever
+    # text is already on the page because that could be the
+    # previous city's stock.
+    # -----------------------------------------------------
+
+    for attempt in range(20):
 
         try:
+
             text = page.locator(
                 "body"
             ).inner_text()
 
-            # -------------------------------------------------
-            # IN STOCK
-            # Example:
-            # Có 1 cửa hàng có sản phẩm
-            # -------------------------------------------------
-
-            match = re.search(
-                r"Có\s+(\d+)\s+cửa hàng có sản phẩm",
-                text,
-                re.IGNORECASE
+            stock = extract_stock_from_text(
+                text
             )
 
-            if match:
+            if stock is not None:
 
-                stock = int(
-                    match.group(1)
-                )
+                if stock > 0:
 
-                print(
-                    f"Stock text found: "
-                    f"Có {stock} cửa hàng có sản phẩm"
-                )
+                    print(
+                        "Stock text found: "
+                        f"Có {stock} "
+                        "cửa hàng có sản phẩm"
+                    )
+
+                else:
+
+                    print(
+                        f"{city}: "
+                        "TẠM HẾT HÀNG"
+                    )
 
                 return stock
-
-            # -------------------------------------------------
-            # OUT OF STOCK
-            # -------------------------------------------------
-
-            text_lower = text.lower()
-
-            if (
-                "tạm hết hàng" in text_lower
-                or "tạm hết hàng tại" in text_lower
-            ):
-
-                print(
-                    f"{city}: TẠM HẾT HÀNG"
-                )
-
-                return 0
 
         except Exception:
             pass
@@ -273,17 +419,18 @@ def get_stock_count(page, city):
         page.wait_for_timeout(500)
 
     print(
-        f"WARNING: Could not determine stock "
-        f"for {city}"
+        f"WARNING: Could not determine "
+        f"stock for {city}"
     )
 
     return None
 
 
+# =========================================================
+# SCRAPE ALL CITY STOCK
+# =========================================================
+
 def scrape_stock(page):
-    """
-    Scrape stock for all configured cities.
-    """
 
     stock_records = []
 
@@ -322,27 +469,27 @@ def scrape_stock(page):
 
         if stock is None:
 
-            stock_status = "UNKNOWN"
+            status = "UNKNOWN"
 
         elif stock > 0:
 
-            stock_status = "IN_STOCK"
+            status = "IN_STOCK"
 
         else:
 
-            stock_status = "OUT_OF_STOCK"
+            status = "OUT_OF_STOCK"
 
         stock_records.append({
             "city": city,
             "stock": stock,
-            "stock_status": stock_status,
+            "stock_status": status,
         })
 
     return stock_records
 
 
 # =========================================================
-# PRODUCT SCRAPER
+# PRODUCT
 # =========================================================
 
 def scrape_product(page, product):
@@ -376,8 +523,8 @@ def scrape_product(page, product):
         # PRICE
         # -------------------------------------------------
 
-        current_price, original_price = extract_prices(
-            text
+        current_price, original_price = (
+            extract_prices(text)
         )
 
         if current_price is None:
@@ -440,29 +587,38 @@ def scrape_product(page, product):
         known_records = [
             record
             for record in stock_records
-            if record["stock_status"] != "UNKNOWN"
+            if record["stock_status"]
+            != "UNKNOWN"
         ]
 
         if not known_records:
 
-            overall_stock_status = "UNKNOWN"
+            overall_stock_status = (
+                "UNKNOWN"
+            )
 
         elif any(
-            record["stock_status"] == "IN_STOCK"
+            record["stock_status"]
+            == "IN_STOCK"
             for record in known_records
         ):
 
-            overall_stock_status = "IN_STOCK"
+            overall_stock_status = (
+                "IN_STOCK"
+            )
 
         else:
 
-            overall_stock_status = "OUT_OF_STOCK"
+            overall_stock_status = (
+                "OUT_OF_STOCK"
+            )
 
         # -------------------------------------------------
         # RESULT
         # -------------------------------------------------
 
         return {
+
             "timestamp": datetime.now(
                 timezone.utc
             ).isoformat(),
@@ -473,7 +629,9 @@ def scrape_product(page, product):
 
             "product_id": product["product_id"],
 
-            "product_name": product["product_name"],
+            "product_name": product[
+                "product_name"
+            ],
 
             "price": current_price,
 
@@ -488,9 +646,13 @@ def scrape_product(page, product):
                 else ""
             ),
 
-            "stock_status": overall_stock_status,
+            "stock_status": (
+                overall_stock_status
+            ),
 
-            "stock_records": stock_records,
+            "stock_records": (
+                stock_records
+            ),
 
             "promotion": "",
 
@@ -508,7 +670,7 @@ def scrape_product(page, product):
 
 
 # =========================================================
-# MAIN SCRAPER
+# SCRAPER ENTRY POINT
 # =========================================================
 
 def scrape(products):
