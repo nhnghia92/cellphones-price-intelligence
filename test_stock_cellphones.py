@@ -1,6 +1,4 @@
-
 import re
-
 from playwright.sync_api import sync_playwright
 
 
@@ -10,58 +8,31 @@ PRODUCT_URL = (
     "cubic-wall-charger-cu.html"
 )
 
-
-CITIES = {
-    "HCM": [
-        "Hồ Chí Minh",
-        "TP. Hồ Chí Minh",
-        "TP Hồ Chí Minh",
-        "HCM",
-    ],
-    "HNI": [
-        "Hà Nội",
-        "HANOI",
-    ],
-    "CTO": [
-        "Cần Thơ",
-        "CAN THO",
-    ],
-    "DAN": [
-        "Đà Nẵng",
-        "DA NANG",
-    ],
-}
+CITIES = [
+    "Hồ Chí Minh",
+    "Hà Nội",
+    "Đà Nẵng",
+    "Cần Thơ",
+]
 
 
 def clean(text):
-    if not text:
-        return ""
-
-    return re.sub(
-        r"\s+",
-        " ",
-        text,
-    ).strip()
+    return re.sub(r"\s+", " ", text or "").strip()
 
 
-def inspect_page(page):
-    print("")
-    print("==============================")
-    print("PAGE INSPECTION")
-    print("==============================")
-
-    text = page.locator("body").inner_text()
-
+def print_relevant_text(page):
     keywords = [
         "cửa hàng",
         "tồn kho",
         "còn hàng",
-        "chọn cửa hàng",
-        "hồ chí minh",
-        "hà nội",
-        "đà nẵng",
-        "cần thơ",
+        "hết hàng",
+        "Hồ Chí Minh",
+        "Hà Nội",
+        "Đà Nẵng",
+        "Cần Thơ",
     ]
+
+    text = page.locator("body").inner_text()
 
     for line in text.splitlines():
         line = clean(line)
@@ -69,20 +40,14 @@ def inspect_page(page):
         if not line:
             continue
 
-        lower = line.lower()
+        if any(
+            keyword.lower() in line.lower()
+            for keyword in keywords
+        ):
+            print(line)
 
-        for keyword in keywords:
-            if keyword in lower:
-                print(line)
-                break
 
-
-def find_stock_button(page):
-    print("")
-    print("==============================")
-    print("SEARCH STOCK SECTION")
-    print("==============================")
-
+def open_store_section(page):
     keywords = [
         "xem cửa hàng",
         "xem cửa hàng có hàng",
@@ -95,120 +60,68 @@ def find_stock_button(page):
         try:
             locator = page.get_by_text(
                 keyword,
-                exact=False,
+                exact=False
             )
 
-            count = locator.count()
+            if locator.count() > 0:
+                locator.first.click(timeout=5000)
+                page.wait_for_timeout(1500)
 
-            if count > 0:
-                print(
-                    f"FOUND: {keyword} "
-                    f"({count} elements)"
-                )
-
-                return locator.first
-
-        except Exception as error:
-            print(
-                f"Search error for "
-                f"{keyword}: {error}"
-            )
-
-    print("Stock section not found.")
-
-    return None
-
-
-def inspect_elements(page):
-    print("")
-    print("==============================")
-    print("POSSIBLE STORE ELEMENTS")
-    print("==============================")
-
-    selectors = [
-        '[class*="store"]',
-        '[class*="Store"]',
-        '[class*="shop"]',
-        '[class*="Shop"]',
-        '[class*="branch"]',
-        '[class*="Branch"]',
-    ]
-
-    for selector in selectors:
-        try:
-            count = page.locator(
-                selector
-            ).count()
-
-            if count > 0:
-                print(
-                    f"{selector}: {count}"
-                )
+                print("Đã mở phần cửa hàng.")
+                return True
 
         except Exception:
             pass
 
+    print("Không tìm thấy phần cửa hàng.")
+    return False
 
-def test_cities(page):
+
+def select_city(page, city):
     print("")
-    print("==============================")
-    print("CITY TEST")
-    print("==============================")
+    print(f"Đang chọn: {city}")
 
-    for city_code, names in CITIES.items():
-
-        print("")
-        print(
-            f"Testing {city_code}"
+    try:
+        # Tìm tên thành phố trong popup
+        locator = page.get_by_text(
+            city,
+            exact=True
         )
 
-        found = False
-
-        for name in names:
-            try:
-                locator = page.get_by_text(
-                    name,
-                    exact=False,
-                )
-
-                count = locator.count()
-
-                if count > 0:
-                    print(
-                        f"FOUND: {name} "
-                        f"({count} elements)"
-                    )
-
-                    found = True
-                    break
-
-            except Exception as error:
-                print(
-                    f"Error: {error}"
-                )
-
-        if not found:
-            print(
-                f"NOT FOUND: {city_code}"
+        if locator.count() == 0:
+            locator = page.get_by_text(
+                city,
+                exact=False
             )
+
+        if locator.count() == 0:
+            print(f"Không tìm thấy {city}")
+            return False
+
+        locator.first.click(timeout=5000)
+
+        # CellphoneS có thể cập nhật nội dung
+        # nhưng URL không đổi
+        page.wait_for_timeout(3000)
+
+        print(f"Đã chọn: {city}")
+
+        return True
+
+    except Exception as error:
+        print(f"Lỗi khi chọn {city}: {error}")
+        return False
 
 
 def main():
 
-    print("")
-    print(
-        "========================================"
-    )
-    print(
-        "CELLPHONES STOCK TEST"
-    )
-    print(
-        "========================================"
-    )
+    print("=" * 50)
+    print("CELLPHONES CITY STOCK TEST")
+    print("=" * 50)
 
-    with sync_playwright() as playwright:
+    with sync_playwright() as p:
 
-        browser = playwright.chromium.launch(
+        browser = p.chromium.launch(
             headless=True
         )
 
@@ -220,90 +133,41 @@ def main():
         )
 
         print("")
-        print(
-            "Opening product..."
-        )
+        print("Opening product...")
 
         page.goto(
             PRODUCT_URL,
             wait_until="domcontentloaded",
-            timeout=30000,
+            timeout=30000
         )
 
-        page.wait_for_timeout(
-            5000
-        )
+        page.wait_for_timeout(5000)
 
-        print(
-            "Page loaded."
-        )
+        print("Page loaded.")
 
-        inspect_page(page)
+        # Mở phần cửa hàng
+        if not open_store_section(page):
+            browser.close()
+            return
 
-        stock_button = find_stock_button(
-            page
-        )
+        # Test từng tỉnh
+        for city in CITIES:
 
-        if stock_button is not None:
             print("")
-            print(
-                "Clicking stock section..."
-            )
+            print("-" * 50)
 
-            try:
-                stock_button.click(
-                    timeout=5000
-                )
-
-                page.wait_for_timeout(
-                    2000
-                )
-
-                print(
-                    "Stock section clicked."
-                )
-
-            except Exception as error:
-                print(
-                    "Click failed:"
-                )
-                print(error)
-
-        else:
-            print("")
-            print(
-                "No stock button found."
-            )
-
-        inspect_page(page)
-
-        inspect_elements(page)
-
-        test_cities(page)
-
-        print("")
-        print(
-            "Waiting for final rendering..."
-        )
-
-        page.wait_for_timeout(
-            3000
-        )
+            if select_city(page, city):
+                print_relevant_text(page)
+            else:
+                print(f"FAILED: {city}")
 
         browser.close()
 
     print("")
-    print(
-        "========================================"
-    )
-    print(
-        "STOCK TEST COMPLETED"
-    )
-    print(
-        "========================================"
-    )
+    print("=" * 50)
+    print("TEST COMPLETED")
+    print("=" * 50)
 
 
 if __name__ == "__main__":
     main()
-
