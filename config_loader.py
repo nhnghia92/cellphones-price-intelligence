@@ -1,5 +1,6 @@
 import os
 import json
+
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -38,9 +39,9 @@ def load_products():
     product_rows = product_sheet.get_all_records()
     url_rows = url_sheet.get_all_records()
 
-    # ----------------------------------------
+    # ========================================
     # PRODUCT MASTER
-    # ----------------------------------------
+    # ========================================
 
     products = {}
 
@@ -57,9 +58,6 @@ def load_products():
             row.get("brand", "")
         ).strip()
 
-        if brand.lower() != "belkin":
-            continue
-
         product_id = str(
             row.get("product_id", "")
         ).strip()
@@ -71,15 +69,22 @@ def load_products():
         if not product_id:
             continue
 
+        if not brand:
+            print(
+                f"SKIP {product_id}: "
+                "missing brand"
+            )
+            continue
+
         products[product_id] = {
             "product_id": product_id,
             "brand": brand,
             "product_name": product_name,
         }
 
-    # ----------------------------------------
+    # ========================================
     # PRODUCT URLS
-    # ----------------------------------------
+    # ========================================
 
     product_urls = []
 
@@ -135,9 +140,24 @@ def load_products():
             "url": url,
         })
 
+    # ========================================
+    # SUMMARY
+    # ========================================
+
+    brands = sorted(
+        set(
+            product["brand"]
+            for product in products.values()
+        )
+    )
+
     print(
-        f"Loaded {len(products)} active "
-        "Belkin products"
+        f"Loaded {len(products)} active products"
+    )
+
+    print(
+        "Active brands: "
+        + ", ".join(brands)
     )
 
     print(
