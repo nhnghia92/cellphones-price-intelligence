@@ -1,6 +1,5 @@
-```python
+
 import re
-import time
 
 from playwright.sync_api import sync_playwright
 
@@ -46,9 +45,6 @@ def clean_text(text):
 
 
 def find_stock_section(page):
-    """
-    Try to locate the product stock/store area.
-    """
 
     keywords = [
         "xem cửa hàng",
@@ -56,7 +52,6 @@ def find_stock_section(page):
         "cửa hàng có hàng",
         "tìm cửa hàng",
         "chọn cửa hàng",
-        "cửa hàng",
     ]
 
     for keyword in keywords:
@@ -66,13 +61,10 @@ def find_stock_section(page):
             exact=False,
         )
 
-        count = locator.count()
-
-        if count > 0:
+        if locator.count() > 0:
 
             print(
-                f"FOUND stock keyword: "
-                f"{keyword}"
+                f"FOUND stock keyword: {keyword}"
             )
 
             return locator.first
@@ -81,10 +73,6 @@ def find_stock_section(page):
 
 
 def inspect_page(page):
-    """
-    Print useful information about
-    possible stock/store elements.
-    """
 
     print("")
     print("==============================")
@@ -119,10 +107,8 @@ def inspect_page(page):
 
     for line in lines:
 
-        line_lower = line.lower()
-
         if any(
-            keyword in line_lower
+            keyword in line.lower()
             for keyword in keywords
         ):
 
@@ -131,16 +117,9 @@ def inspect_page(page):
             )
 
 
-def count_visible_store_rows(page):
-    """
-    Heuristic store counting.
+def count_possible_store_elements(page):
 
-    This is intentionally only a test.
-    We will replace it with the exact DOM/API
-    logic after seeing the real page structure.
-    """
-
-    possible_selectors = [
+    selectors = [
         '[class*="store"]',
         '[class*="Store"]',
         '[class*="shop"]',
@@ -149,40 +128,74 @@ def count_visible_store_rows(page):
         '[class*="Branch"]',
     ]
 
-    candidates = []
-
-    for selector in possible_selectors:
-
-        try:
-
-            locator = page.locator(
-                selector
-            )
-
-            count = locator.count()
-
-            if count > 0:
-
-                candidates.append(
-                    (
-                        selector,
-                        count,
-                    )
-                )
-
-        except Exception:
-            pass
-
     print("")
     print(
         "Possible store elements:"
     )
 
-    for selector, count in candidates:
+    for selector in selectors:
 
+        try:
+
+            count = page.locator(
+                selector
+            ).count()
+
+            if count > 0:
+
+                print(
+                    f"  {selector}: {count}"
+                )
+
+        except Exception:
+            pass
+
+
+def test_city_names(page):
+
+    print("")
+    print("==============================")
+    print("CITY TEST")
+    print("==============================")
+
+    for city_code, city_names in CITIES.items():
+
+        print("")
         print(
-            f"  {selector}: {count}"
+            f"Testing city: {city_code}"
         )
+
+        found = False
+
+        for city_name in city_names:
+
+            try:
+
+                locator = page.get_by_text(
+                    city_name,
+                    exact=False,
+                )
+
+                count = locator.count()
+
+                if count > 0:
+
+                    print(
+                        f"  FOUND: {city_name} "
+                        f"({count} elements)"
+                    )
+
+                    found = True
+                    break
+
+            except Exception:
+                pass
+
+        if not found:
+
+            print(
+                f"  NOT FOUND: {city_code}"
+            )
 
 
 def main():
@@ -245,126 +258,3 @@ def main():
         )
 
         if stock_section:
-
-            print("")
-            print(
-                "Clicking stock/store section..."
-            )
-
-            try:
-
-                stock_section.click(
-                    timeout=5000
-                )
-
-                page.wait_for_timeout(
-                    2000
-                )
-
-                print(
-                    "Stock section clicked."
-                )
-
-            except Exception as e:
-
-                print(
-                    "Could not click stock "
-                    f"section: {e}"
-                )
-
-        else:
-
-            print("")
-            print(
-                "WARNING: Could not find "
-                "stock/store section."
-            )
-
-        inspect_page(page)
-
-        count_visible_store_rows(
-            page
-        )
-
-        print("")
-        print(
-            "========================================"
-        )
-        print(
-            "CITY TEST"
-        )
-        print(
-            "========================================"
-        )
-
-        for city_code, city_names in (
-            CITIES.items()
-        ):
-
-            print("")
-            print(
-                f"Testing city: {city_code}"
-            )
-
-            found = False
-
-            for city_name in city_names:
-
-                try:
-
-                    locator = page.get_by_text(
-                        city_name,
-                        exact=False,
-                    )
-
-                    count = locator.count()
-
-                    if count > 0:
-
-                        print(
-                            f"  FOUND: "
-                            f"{city_name} "
-                            f"({count} elements)"
-                        )
-
-                        found = True
-
-                        break
-
-                except Exception:
-                    pass
-
-            if not found:
-
-                print(
-                    f"  NOT FOUND: "
-                    f"{city_code}"
-                )
-
-        print("")
-        print(
-            "Keeping browser open briefly "
-            "for JS rendering..."
-        )
-
-        page.wait_for_timeout(
-            3000
-        )
-
-        browser.close()
-
-    print("")
-    print(
-        "========================================"
-    )
-    print(
-        "STOCK TEST COMPLETED"
-    )
-    print(
-        "========================================"
-    )
-
-
-if __name__ == "__main__":
-    main()
-```
