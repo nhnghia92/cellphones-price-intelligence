@@ -357,13 +357,17 @@ def main(products):
             ),
         ])
 
-        min_change = float(
-            os.getenv(
-                "MIN_CHANGE_PCT",
-                "5"
-            )
-        )
+       min_change_raw = os.getenv(
+    "MIN_CHANGE_PCT",
+    "5"
+)
 
+try:
+    min_change = float(
+        min_change_raw
+    ) if min_change_raw.strip() else 5.0
+except ValueError:
+    min_change = 5.0
         if (
             change_1d is not None
             and abs(change_1d) >= min_change
