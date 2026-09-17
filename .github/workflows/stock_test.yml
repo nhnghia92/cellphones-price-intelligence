@@ -38,48 +38,48 @@ jobs:
 
 
           def get_stock_count(page):
-              try:
-                  body = page.locator("body").inner_text()
+              body = page.locator("body").inner_text()
 
-                  patterns = [
-                      r"Có\s+(\d+)\s+cửa hàng có sản phẩm",
-                      r"Có\s+(\d+)\s+cửa hàng có hàng",
-                  ]
+              patterns = [
+                  r"Có\s+(\d+)\s+cửa hàng có sản phẩm",
+                  r"Có\s+(\d+)\s+cửa hàng có hàng",
+              ]
 
-                  for pattern in patterns:
-                      match = re.search(
-                          pattern,
-                          body,
-                          re.IGNORECASE
-                      )
-
-                      if match:
-                          return int(match.group(1))
-
-              except Exception as error:
-                  print(
-                      "Stock count error:",
-                      error
+              for pattern in patterns:
+                  match = re.search(
+                      pattern,
+                      body,
+                      re.IGNORECASE
                   )
+
+                  if match:
+                      return int(match.group(1))
 
               return None
 
 
-          def open_city_selector(page):
+          def modal_is_open(page):
+              modal = page.locator(
+                  "#teleport-modal.teleport-modal-change-province"
+              )
+
+              return modal.count() > 0 and modal.first.is_visible()
+
+
+          def open_modal(page):
+              if modal_is_open(page):
+                  print("Province modal already open.")
+                  return True
+
+              print("Opening province modal...")
+
               selector = page.locator(
-                  ".button__change-province"
+                  ".box-on-stock-option.button__change-province"
               )
 
-              count = selector.count()
-
-              print(
-                  "Province selector count:",
-                  count
-              )
-
-              if count == 0:
+              if selector.count() == 0:
                   print(
-                      "ERROR: province selector not found"
+                      "Stock province selector not found."
                   )
                   return False
 
@@ -90,58 +90,65 @@ jobs:
 
                   page.wait_for_timeout(800)
 
-                  return True
+                  print("Province modal opened.")
+
+                  return modal_is_open(page)
 
               except Exception as error:
                   print(
-                      "Could not open province selector:",
+                      "Could not open province modal:",
                       error
                   )
 
                   return False
 
 
-          def select_city(page, city_name):
+          def click_city(page, city_name):
               print(
-                  f"Selecting city: {city_name}"
+                  f"Clicking city: {city_name}"
               )
 
-              candidates = page.get_by_text(
+              modal = page.locator(
+                  "#teleport-modal.teleport-modal-change-province"
+              )
+
+              if modal.count() == 0:
+                  print("Province modal not found.")
+                  return False
+
+              city = modal.get_by_text(
                   city_name,
                   exact=True
               )
 
-              count = candidates.count()
+              count = city.count()
 
               print(
-                  f"City elements found: {count}"
+                  f"{city_name} elements in modal: {count}"
               )
 
               if count == 0:
                   print(
-                      f"ERROR: {city_name} not found"
+                      f"{city_name} not found in modal."
                   )
                   return False
 
               for i in range(count):
                   try:
-                      element = candidates.nth(i)
+                      element = city.nth(i)
 
-                      visible = element.is_visible()
-
-                      if not visible:
+                      if not element.is_visible():
                           continue
-
-                      print(
-                          f"Clicking visible {city_name} "
-                          f"element {i}"
-                      )
 
                       element.click(
                           timeout=5000
                       )
 
-                      page.wait_for_timeout(1500)
+                      page.wait_for_timeout(1800)
+
+                      print(
+                          f"{city_name} clicked."
+                      )
 
                       return True
 
@@ -183,9 +190,7 @@ jobs:
                   )
 
                   print("")
-                  print(
-                      "Opening product..."
-                  )
+                  print("Opening product...")
 
                   page.goto(
                       URL,
@@ -195,79 +200,135 @@ jobs:
 
                   page.wait_for_timeout(5000)
 
+                  print("Product loaded.")
+
+                  print("")
                   print(
-                      "Product loaded."
+                      "================================"
+                  )
+                  print("TESTING HCM")
+                  print(
+                      "================================"
                   )
 
-                  for code, city_name in CITIES:
+                  if open_modal(page):
 
-                      print("")
-                      print(
-                          "================================"
-                      )
-                      print(
-                          f"TESTING {code} - {city_name}"
-                      )
-                      print(
-                          "================================"
-                      )
-
-                      if not open_city_selector(page):
-                          results[code] = None
-                          continue
-
-                      if not select_city(
+                      if click_city(
                           page,
-                          city_name
+                          "Hồ Chí Minh"
                       ):
-                          results[code] = None
-                          continue
 
-                      page.wait_for_timeout(2000)
+                          count = get_stock_count(page)
 
-                      count = get_stock_count(page)
+                          results["HCM"] = count
 
-                      results[code] = count
-
-                      if count is None:
                           print(
-                              f"{code}: STOCK COUNT NOT FOUND"
+                              "HCM:",
+                              count
                           )
-                      else:
+
+                  print("")
+                  print(
+                      "================================"
+                  )
+                  print("TESTING HNI")
+                  print(
+                      "================================"
+                  )
+
+                  if open_modal(page):
+
+                      if click_city(
+                          page,
+                          "Hà Nội"
+                      ):
+
+                          count = get_stock_count(page)
+
+                          results["HNI"] = count
+
                           print(
-                              f"{code}: "
-                              f"{count} stores with stock"
+                              "HNI:",
+                              count
+                          )
+
+                  print("")
+                  print(
+                      "================================"
+                  )
+                  print("TESTING CTO")
+                  print(
+                      "================================"
+                  )
+
+                  if open_modal(page):
+
+                      if click_city(
+                          page,
+                          "Cần Thơ"
+                      ):
+
+                          count = get_stock_count(page)
+
+                          results["CTO"] = count
+
+                          print(
+                              "CTO:",
+                              count
+                          )
+
+                  print("")
+                  print(
+                      "================================"
+                  )
+                  print("TESTING DAN")
+                  print(
+                      "================================"
+                  )
+
+                  if open_modal(page):
+
+                      if click_city(
+                          page,
+                          "Đà Nẵng"
+                      ):
+
+                          count = get_stock_count(page)
+
+                          results["DAN"] = count
+
+                          print(
+                              "DAN:",
+                              count
                           )
 
                   print("")
                   print(
                       "========================================"
                   )
-                  print(
-                      "FINAL RESULT"
-                  )
+                  print("FINAL RESULT")
                   print(
                       "========================================"
                   )
 
-                  for code, count in results.items():
+                  for code, _ in CITIES:
 
-                      if count is None:
+                      value = results.get(code)
+
+                      if value is None:
                           print(
                               f"{code}: NOT FOUND"
                           )
                       else:
                           print(
-                              f"{code}: {count}"
+                              f"{code}: {value}"
                           )
 
                   print("")
                   print(
                       "========================================"
                   )
-                  print(
-                      "TEST COMPLETED"
-                  )
+                  print("TEST COMPLETED")
                   print(
                       "========================================"
                   )
