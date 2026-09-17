@@ -11,8 +11,8 @@ PRODUCT_URL = (
 CITIES = [
     "Hồ Chí Minh",
     "Hà Nội",
-    "Đà Nẵng",
     "Cần Thơ",
+    "Đà Nẵng",
 ]
 
 
@@ -20,104 +20,202 @@ def clean(text):
     return re.sub(r"\s+", " ", text or "").strip()
 
 
-def print_relevant_text(page):
-    keywords = [
-        "cửa hàng",
-        "tồn kho",
-        "còn hàng",
-        "hết hàng",
-        "Hồ Chí Minh",
-        "Hà Nội",
-        "Đà Nẵng",
-        "Cần Thơ",
+def open_province_modal(page):
+    """Mở popup chọn tỉnh/thành."""
+
+    modal = page.locator("#change-province")
+
+    # Popup đã mở
+    if modal.is_visible():
+        print("Province modal already open.")
+        return True
+
+    print("Opening province modal...")
+
+    # Tìm nút/element đang hiển thị tỉnh hiện tại
+    selectors = [
+        "text=Hồ Chí Minh",
+        "text=Hà Nội",
+        "text=Cần Thơ",
+        "text=Đà Nẵng",
     ]
 
-    text = page.locator("body").inner_text()
+    for selector in selectors:
+        try:
+            locator = page.locator(selector)
+
+            if locator.count() > 0:
+                locator.first.click(timeout=5000)
+                page.wait_for_timeout(500)
+
+                if modal.is_visible():
+                    print("Province modal opened.")
+                    return True
+
+        except Exception:
+            pass
+
+    print("Stock province selector not found.")
+
+    return False
+
+
+def select_city(page, city):
+    """Tìm tỉnh bằng ô search rồi click kết quả."""
+
+    print("")
+    print("=" * 40)
+    print(f"TESTING {city}")
+    print("=" * 40)
+
+    if not open_province_modal(page):
+        return False
+
+    # --------------------------------------------------
+    # Ô tìm kiếm chính xác từ HTML
+    # --------------------------------------------------
+
+    search = page.locator(
+        "#inputSearchProvince input"
+    )
+
+    if search.count() == 0:
+
+        print("Province search input not found.")
+
+        return False
+
+    # --------------------------------------------------
+    # Nhập tên tỉnh
+    # --------------------------------------------------
+
+    print(
+        f"Searching province: {city}"
+    )
+
+    search.fill(city)
+
+    page.wait_for_timeout(300)
+
+    # --------------------------------------------------
+    # Tìm kết quả trong popup
+    # --------------------------------------------------
+
+    city_locator = page.locator(
+        "#change-province li a"
+    ).filter(
+        has_text=city
+    )
+
+    count = city_locator.count()
+
+    print(
+        f"{city} elements in modal: {count}"
+    )
+
+    if count == 0:
+
+        print(
+            f"{city}: NOT FOUND"
+        )
+
+        return False
+
+    # --------------------------------------------------
+    # Click tỉnh
+    # --------------------------------------------------
+
+    try:
+
+        city_locator.first.click(
+            timeout=5000
+        )
+
+        print(
+            f"{city} clicked."
+        )
+
+    except Exception as error:
+
+        print(
+            f"Could not click {city}: {error}"
+        )
+
+        return False
+
+    # --------------------------------------------------
+    # Chờ CellphoneS cập nhật
+    #
+    # URL có thể KHÔNG thay đổi.
+    # --------------------------------------------------
+
+    page.wait_for_timeout(2000)
+
+    return True
+
+
+def get_page_text(page):
+
+    try:
+        return page.locator(
+            "body"
+        ).inner_text()
+
+    except Exception:
+        return ""
+
+
+def inspect_stock(page, city):
+
+    print("")
+    print(
+        f"Checking stock for {city}..."
+    )
+
+    text = get_page_text(page)
+
+    keywords = [
+        "còn hàng",
+        "hết hàng",
+        "tồn kho",
+        "cửa hàng",
+    ]
+
+    lines = []
 
     for line in text.splitlines():
+
         line = clean(line)
 
         if not line:
             continue
 
+        lower = line.lower()
+
         if any(
-            keyword.lower() in line.lower()
+            keyword in lower
             for keyword in keywords
         ):
+            lines.append(line)
+
+    if lines:
+
+        for line in lines[:30]:
             print(line)
 
+    else:
 
-def open_store_section(page):
-    keywords = [
-        "xem cửa hàng",
-        "xem cửa hàng có hàng",
-        "cửa hàng có hàng",
-        "tìm cửa hàng",
-        "chọn cửa hàng",
-    ]
-
-    for keyword in keywords:
-        try:
-            locator = page.get_by_text(
-                keyword,
-                exact=False
-            )
-
-            if locator.count() > 0:
-                locator.first.click(timeout=5000)
-                page.wait_for_timeout(1500)
-
-                print("Đã mở phần cửa hàng.")
-                return True
-
-        except Exception:
-            pass
-
-    print("Không tìm thấy phần cửa hàng.")
-    return False
-
-
-def select_city(page, city):
-    print("")
-    print(f"Đang chọn: {city}")
-
-    try:
-        # Tìm tên thành phố trong popup
-        locator = page.get_by_text(
-            city,
-            exact=True
+        print(
+            "No stock information found."
         )
-
-        if locator.count() == 0:
-            locator = page.get_by_text(
-                city,
-                exact=False
-            )
-
-        if locator.count() == 0:
-            print(f"Không tìm thấy {city}")
-            return False
-
-        locator.first.click(timeout=5000)
-
-        # CellphoneS có thể cập nhật nội dung
-        # nhưng URL không đổi
-        page.wait_for_timeout(3000)
-
-        print(f"Đã chọn: {city}")
-
-        return True
-
-    except Exception as error:
-        print(f"Lỗi khi chọn {city}: {error}")
-        return False
 
 
 def main():
 
-    print("=" * 50)
+    print("")
+    print("=" * 40)
     print("CELLPHONES CITY STOCK TEST")
-    print("=" * 50)
+    print("=" * 40)
 
     with sync_playwright() as p:
 
@@ -138,35 +236,43 @@ def main():
         page.goto(
             PRODUCT_URL,
             wait_until="domcontentloaded",
-            timeout=30000
+            timeout=30000,
         )
 
         page.wait_for_timeout(5000)
 
-        print("Page loaded.")
+        print("Product loaded.")
 
-        # Mở phần cửa hàng
-        if not open_store_section(page):
-            browser.close()
-            return
+        # --------------------------------------------------
+        # TEST 4 TỈNH
+        # --------------------------------------------------
 
-        # Test từng tỉnh
         for city in CITIES:
 
-            print("")
-            print("-" * 50)
+            success = select_city(
+                page,
+                city
+            )
 
-            if select_city(page, city):
-                print_relevant_text(page)
+            if success:
+
+                inspect_stock(
+                    page,
+                    city
+                )
+
             else:
-                print(f"FAILED: {city}")
+
+                print(
+                    f"{city}: FAILED"
+                )
 
         browser.close()
 
     print("")
-    print("=" * 50)
+    print("=" * 40)
     print("TEST COMPLETED")
-    print("=" * 50)
+    print("=" * 40)
 
 
 if __name__ == "__main__":
