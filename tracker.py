@@ -25,6 +25,7 @@ HEAD = {
     ],
     "PRICE_DAILY": [
         "date",
+        "retailer_id",
         "product_id",
         "brand",
         "product_name",
@@ -36,15 +37,16 @@ HEAD = {
         "avg_30d",
     ],
     "PRICE_EVENTS": [
-        "event_time",
-        "product_id",
-        "brand",
-        "product_name",
-        "event",
-        "change_pct",
-        "severity",
-        "details",
-    ],
+    "event_time",
+    "retailer_id",
+    "product_id",
+    "brand",
+    "product_name",
+    "event",
+    "change_pct",
+    "severity",
+    "details",
+],
     "AI_INSIGHTS": [
         "event_time",
         "product_id",
@@ -231,13 +233,14 @@ def main(products):
 
         if len(row) < 6:
             continue
+            
+        retailer_id = row[1]
+product_id = row[3]
 
-        product_id = row[3]
+if not retailer_id or not product_id:
+    continue
 
-        if not product_id:
-            continue
-
-        price = to_number(row[5])
+price = to_number(row[5])
 
         if price is None:
             continue
@@ -256,7 +259,10 @@ def main(products):
         except Exception:
 
             continue
-
+        key = (
+    retailer_id,
+    product_id
+)
         history.setdefault(
             product_id,
             []
@@ -280,7 +286,7 @@ def main(products):
         f"Minimum price event threshold: {min_change_pct}%"
     )
 
-    for product_id, records in history.items():
+    for (retailer_id, product_id), records in history.items():
 
         records.sort(
             key=lambda x: x[0]
@@ -348,22 +354,44 @@ def main(products):
                 current_price
             ]
 
-        daily_rows.append([
-            now.date().isoformat(),
-            product_id,
-            "",
-            "",
-            current_price,
-            change_1d,
-            change_7d,
-            change_30d,
-            min(recent_prices),
-            round(
-                sum(recent_prices)
-                / len(recent_prices),
-                0,
-            ),
-        ])
+       product_info = next(
+    (
+        product
+        for product in products
+        if product["product_id"] == product_id
+    ),
+    None,
+)
+
+brand = (
+    product_info["brand"]
+    if product_info
+    else ""
+)
+
+product_name = (
+    product_info["product_name"]
+    if product_info
+    else ""
+)
+
+daily_rows.append([
+    now.date().isoformat(),
+    retailer_id,
+    product_id,
+    brand,
+    product_name,
+    current_price,
+    change_1d,
+    change_7d,
+    change_30d,
+    min(recent_prices),
+    round(
+        sum(recent_prices)
+        / len(recent_prices),
+        0,
+    ),
+])
 
         # ----------------------------------------
         # PRICE EVENTS
@@ -399,11 +427,12 @@ def main(products):
             )
 
             events.append([
-                now.isoformat(),
-                product_id,
-                "",
-                "",
-                event_type,
+    now.isoformat(),
+    retailer_id,
+    product_id,
+    brand,
+    product_name,
+    event_type,
                 change_1d,
                 severity,
                 (
