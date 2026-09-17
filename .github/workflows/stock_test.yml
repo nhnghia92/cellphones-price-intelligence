@@ -342,4 +342,4 @@ jobs:
 
       - name: Run city stock test
         run: |
-          python test_city_stock.py
+          python test_stock_cellphones.py
