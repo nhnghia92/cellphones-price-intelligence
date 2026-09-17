@@ -1,11 +1,10 @@
-
-name: Test CellphoneS Stock
+name: Test CellphoneS City Selector
 
 on:
   workflow_dispatch:
 
 jobs:
-  stock-test:
+  stock-city-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,6 +21,241 @@ jobs:
           pip install playwright
           playwright install --with-deps chromium
 
-      - name: Run stock test
+      - name: Create test script
         run: |
-          python test_stock_cellphones.py
+          cat > test_city_selector.py <<'PY'
+          from playwright.sync_api import sync_playwright
+
+          URL = "https://cellphones.com.vn/cu-sac-nhanh-belkin-20w-1-cong-usb-c-pd-pps-cubic-wall-charger-cu.html"
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+
+              page = browser.new_page(
+                  viewport={
+                      "width": 1440,
+                      "height": 1000
+                  }
+              )
+
+              print("Opening product...")
+              page.goto(
+                  URL,
+                  wait_until="domcontentloaded",
+                  timeout=30000
+              )
+
+              page.wait_for_timeout(5000)
+
+              print("")
+              print("==============================")
+              print("CITY SELECTOR INSPECTION")
+              print("==============================")
+
+              elements = page.locator("text=Hồ Chí Minh")
+
+              print(
+                  "Hồ Chí Minh elements:",
+                  elements.count()
+              )
+
+              for i in range(elements.count()):
+                  try:
+                      el = elements.nth(i)
+
+                      print("")
+                      print("ELEMENT", i)
+                      print("tag:", el.evaluate("(e) => e.tagName"))
+                      print("text:", el.inner_text())
+                      print(
+                          "class:",
+                          el.get_attribute("class")
+                      )
+                      print(
+                          "id:",
+                          el.get_attribute("id")
+                      )
+                      print(
+                          "role:",
+                          el.get_attribute("role")
+                      )
+                      print(
+                          "aria-expanded:",
+                          el.get_attribute("aria-expanded")
+                      )
+
+                  except Exception as e:
+                      print("Error:", e)
+
+              print("")
+              print("==============================")
+              print("BUTTONS")
+              print("==============================")
+
+              buttons = page.locator("button")
+
+              print(
+                  "Total buttons:",
+                  buttons.count()
+              )
+
+              for i in range(buttons.count()):
+                  try:
+                      button = buttons.nth(i)
+                      text = button.inner_text().strip()
+
+                      if text:
+                          print(
+                              f"BUTTON {i}: {text[:200]}"
+                          )
+
+                  except Exception:
+                      pass
+
+              print("")
+              print("==============================")
+              print("SELECT ELEMENTS")
+              print("==============================")
+
+              selects = page.locator("select")
+
+              print(
+                  "Total select:",
+                  selects.count()
+              )
+
+              for i in range(selects.count()):
+                  try:
+                      select = selects.nth(i)
+
+                      print(
+                          "SELECT",
+                          i,
+                          "class=",
+                          select.get_attribute("class")
+                      )
+
+                      print(
+                          "SELECT",
+                          i,
+                          "id=",
+                          select.get_attribute("id")
+                      )
+
+                      print(
+                          "OPTIONS:",
+                          select.locator("option").all_inner_texts()
+                      )
+
+                  except Exception as e:
+                      print("Error:", e)
+
+              print("")
+              print("==============================")
+              print("NEARBY DROPDOWN ELEMENTS")
+              print("==============================")
+
+              selectors = [
+                  '[class*="city"]',
+                  '[class*="City"]',
+                  '[class*="province"]',
+                  '[class*="Province"]',
+                  '[class*="location"]',
+                  '[class*="Location"]',
+                  '[class*="store"]',
+                  '[class*="Store"]'
+              ]
+
+              for selector in selectors:
+                  try:
+                      count = page.locator(selector).count()
+
+                      if count:
+                          print(
+                              selector,
+                              ":",
+                              count
+                          )
+
+                          for i in range(min(count, 10)):
+                              try:
+                                  el = page.locator(
+                                      selector
+                                  ).nth(i)
+
+                                  text = el.inner_text().strip()
+
+                                  if text:
+                                      print(
+                                          "  ",
+                                          i,
+                                          ":",
+                                          text[:300]
+                                      )
+
+                              except Exception:
+                                  pass
+
+                  except Exception:
+                      pass
+
+              print("")
+              print("==============================")
+              print("TRY CLICKING HCM")
+              print("==============================")
+
+              for i in range(elements.count()):
+                  try:
+                      el = elements.nth(i)
+
+                      print(
+                          "Trying element",
+                          i
+                      )
+
+                      el.click(
+                          timeout=3000
+                      )
+
+                      page.wait_for_timeout(1500)
+
+                      print(
+                          "Clicked element",
+                          i
+                      )
+
+                      break
+
+                  except Exception as e:
+                      print(
+                          "Could not click:",
+                          e
+                      )
+
+              print("")
+              print("==============================")
+              print("VISIBLE TEXT AFTER CLICK")
+              print("==============================")
+
+              body = page.locator("body").inner_text()
+
+              for line in body.splitlines():
+                  line = line.strip()
+
+                  if any(
+                      city.lower() in line.lower()
+                      for city in [
+                          "Hồ Chí Minh",
+                          "Hà Nội",
+                          "Cần Thơ",
+                          "Đà Nẵng"
+                      ]
+                  ):
+                      print(line)
+
+              browser.close()
+          PY
+
+      - name: Run city selector test
+        run: |
+          python test_city_selector.py
