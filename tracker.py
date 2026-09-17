@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
 from google import genai
-
+from config_loader import load_products
 from scrapers.cellphones import scrape
 
 
@@ -444,47 +444,38 @@ def main(products):
 
 if __name__ == "__main__":
 
+    print("================================")
+    print("BELKIN PRICE INTELLIGENCE")
+    print("================================")
+
+    print("Loading products from PRODUCT_MASTER...")
+
+    products = load_products()
+
+    if not products:
+        print("ERROR: No active products found.")
+        raise SystemExit(1)
+
     print(
-        "Starting CellphoneS scraper..."
+        f"Found {len(products)} active Belkin products."
     )
 
-    products = []
-
-    try:
-
-        # Temporary test product.
-        # We will replace this with
-        # PRODUCT_MASTER in the next step.
-
-        products = [
-            {
-                "product_id": "WCA012",
-                "brand": "Belkin",
-                "product_name": "Belkin WCA012 25W",
-                "url": "https://cellphones.com.vn/",
-            }
-        ]
-
-    except Exception as e:
-
-        print(
-            f"Product loading error: {e}"
-        )
-
-        raise
+    print("Starting CellphoneS scraper...")
 
     results = scrape(products)
 
     print(
-        f"SCRAPED: {len(results)}"
+        f"SCRAPED: {len(results)} products"
     )
 
-    if results:
-
-        main(results)
-
-    else:
-
+    if not results:
         print(
-            "No products scraped."
+            "ERROR: No products were scraped."
         )
+        raise SystemExit(1)
+
+    main(results)
+
+    print("================================")
+    print("TRACKING COMPLETED")
+    print("================================")
