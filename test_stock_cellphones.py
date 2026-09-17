@@ -33,7 +33,7 @@ CITIES = {
 }
 
 
-def clean_text(text):
+def clean(text):
     if not text:
         return ""
 
@@ -44,7 +44,44 @@ def clean_text(text):
     ).strip()
 
 
-def find_stock_section(page):
+def inspect_page(page):
+    print("")
+    print("==============================")
+    print("PAGE INSPECTION")
+    print("==============================")
+
+    text = page.locator("body").inner_text()
+
+    keywords = [
+        "cửa hàng",
+        "tồn kho",
+        "còn hàng",
+        "chọn cửa hàng",
+        "hồ chí minh",
+        "hà nội",
+        "đà nẵng",
+        "cần thơ",
+    ]
+
+    for line in text.splitlines():
+        line = clean(line)
+
+        if not line:
+            continue
+
+        lower = line.lower()
+
+        for keyword in keywords:
+            if keyword in lower:
+                print(line)
+                break
+
+
+def find_stock_button(page):
+    print("")
+    print("==============================")
+    print("SEARCH STOCK SECTION")
+    print("==============================")
 
     keywords = [
         "xem cửa hàng",
@@ -55,69 +92,38 @@ def find_stock_section(page):
     ]
 
     for keyword in keywords:
-
-        locator = page.get_by_text(
-            keyword,
-            exact=False,
-        )
-
-        if locator.count() > 0:
-
-            print(
-                f"FOUND stock keyword: {keyword}"
+        try:
+            locator = page.get_by_text(
+                keyword,
+                exact=False,
             )
 
-            return locator.first
+            count = locator.count()
+
+            if count > 0:
+                print(
+                    f"FOUND: {keyword} "
+                    f"({count} elements)"
+                )
+
+                return locator.first
+
+        except Exception as error:
+            print(
+                f"Search error for "
+                f"{keyword}: {error}"
+            )
+
+    print("Stock section not found.")
 
     return None
 
 
-def inspect_page(page):
-
+def inspect_elements(page):
     print("")
     print("==============================")
-    print("PAGE INSPECTION")
+    print("POSSIBLE STORE ELEMENTS")
     print("==============================")
-
-    body_text = page.locator(
-        "body"
-    ).inner_text()
-
-    lines = [
-        clean_text(line)
-        for line in body_text.splitlines()
-    ]
-
-    lines = [
-        line
-        for line in lines
-        if line
-    ]
-
-    keywords = [
-        "cửa hàng",
-        "tồn kho",
-        "còn hàng",
-        "chọn",
-        "hồ chí minh",
-        "hà nội",
-        "đà nẵng",
-        "cần thơ",
-    ]
-
-    for line in lines:
-
-        if any(
-            keyword in line.lower()
-            for keyword in keywords
-        ):
-
-            print(
-                f"  {line}"
-            )
-
-
-def count_possible_store_elements(page):
 
     selectors = [
         '[class*="store"]',
@@ -128,73 +134,62 @@ def count_possible_store_elements(page):
         '[class*="Branch"]',
     ]
 
-    print("")
-    print(
-        "Possible store elements:"
-    )
-
     for selector in selectors:
-
         try:
-
             count = page.locator(
                 selector
             ).count()
 
             if count > 0:
-
                 print(
-                    f"  {selector}: {count}"
+                    f"{selector}: {count}"
                 )
 
         except Exception:
             pass
 
 
-def test_city_names(page):
-
+def test_cities(page):
     print("")
     print("==============================")
     print("CITY TEST")
     print("==============================")
 
-    for city_code, city_names in CITIES.items():
+    for city_code, names in CITIES.items():
 
         print("")
         print(
-            f"Testing city: {city_code}"
+            f"Testing {city_code}"
         )
 
         found = False
 
-        for city_name in city_names:
-
+        for name in names:
             try:
-
                 locator = page.get_by_text(
-                    city_name,
+                    name,
                     exact=False,
                 )
 
                 count = locator.count()
 
                 if count > 0:
-
                     print(
-                        f"  FOUND: {city_name} "
+                        f"FOUND: {name} "
                         f"({count} elements)"
                     )
 
                     found = True
                     break
 
-            except Exception:
-                pass
+            except Exception as error:
+                print(
+                    f"Error: {error}"
+                )
 
         if not found:
-
             print(
-                f"  NOT FOUND: {city_code}"
+                f"NOT FOUND: {city_code}"
             )
 
 
@@ -210,11 +205,10 @@ def main():
     print(
         "========================================"
     )
-    print("")
 
-    with sync_playwright() as p:
+    with sync_playwright() as playwright:
 
-        browser = p.chromium.launch(
+        browser = playwright.chromium.launch(
             headless=True
         )
 
@@ -222,17 +216,10 @@ def main():
             viewport={
                 "width": 1440,
                 "height": 1000,
-            },
-            user_agent=(
-                "Mozilla/5.0 "
-                "(Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/153.0.0.0 "
-                "Safari/537.36"
-            ),
+            }
         )
 
+        print("")
         print(
             "Opening product..."
         )
@@ -253,8 +240,70 @@ def main():
 
         inspect_page(page)
 
-        stock_section = (
-            find_stock_section(page)
+        stock_button = find_stock_button(
+            page
         )
 
-        if stock_section:
+        if stock_button is not None:
+            print("")
+            print(
+                "Clicking stock section..."
+            )
+
+            try:
+                stock_button.click(
+                    timeout=5000
+                )
+
+                page.wait_for_timeout(
+                    2000
+                )
+
+                print(
+                    "Stock section clicked."
+                )
+
+            except Exception as error:
+                print(
+                    "Click failed:"
+                )
+                print(error)
+
+        else:
+            print("")
+            print(
+                "No stock button found."
+            )
+
+        inspect_page(page)
+
+        inspect_elements(page)
+
+        test_cities(page)
+
+        print("")
+        print(
+            "Waiting for final rendering..."
+        )
+
+        page.wait_for_timeout(
+            3000
+        )
+
+        browser.close()
+
+    print("")
+    print(
+        "========================================"
+    )
+    print(
+        "STOCK TEST COMPLETED"
+    )
+    print(
+        "========================================"
+    )
+
+
+if __name__ == "__main__":
+    main()
+
