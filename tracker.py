@@ -19,8 +19,19 @@ HEAD = {
         "price",
         "original_price",
         "discount_pct",
-        "stock_status",
         "promotion",
+        "url",
+    ],
+
+    "STOCK_RAW": [
+        "timestamp",
+        "retailer_id",
+        "brand",
+        "product_id",
+        "product_name",
+        "city",
+        "stock",
+        "stock_status",
         "url",
     ],
 
@@ -195,6 +206,11 @@ def main(products):
         "PRICE_RAW",
     )
 
+    stock_raw = get_sheet(
+        spreadsheet,
+        "STOCK_RAW",
+    )
+
     price_daily = get_sheet(
         spreadsheet,
         "PRICE_DAILY",
@@ -264,11 +280,6 @@ def main(products):
             ),
 
             product.get(
-                "stock_status",
-                "",
-            ),
-
-            product.get(
                 "promotion",
                 "",
             ),
@@ -295,6 +306,87 @@ def main(products):
 
         print(
             "WARNING: No raw price data."
+        )
+
+    # ========================================
+    # SAVE RAW STOCK DATA
+    # ========================================
+
+    stock_rows = []
+
+    for product in products:
+
+        stock_records = product.get(
+            "stock_records",
+            []
+        )
+
+        for stock in stock_records:
+
+            stock_rows.append([
+                product.get(
+                    "timestamp",
+                    "",
+                ),
+
+                product.get(
+                    "retailer_id",
+                    "",
+                ),
+
+                product.get(
+                    "brand",
+                    "",
+                ),
+
+                product.get(
+                    "product_id",
+                    "",
+                ),
+
+                product.get(
+                    "product_name",
+                    "",
+                ),
+
+                stock.get(
+                    "city",
+                    "",
+                ),
+
+                stock.get(
+                    "stock",
+                    "",
+                ),
+
+                stock.get(
+                    "stock_status",
+                    "UNKNOWN",
+                ),
+
+                product.get(
+                    "url",
+                    "",
+                ),
+            ])
+
+    if stock_rows:
+
+        print(
+            f"Saving {len(stock_rows)} "
+            "stock records..."
+        )
+
+        stock_raw.append_rows(
+            stock_rows,
+            value_input_option="USER_ENTERED",
+        )
+
+    else:
+
+        print(
+            "No stock records returned "
+            "by scrapers."
         )
 
     # ========================================
@@ -699,6 +791,11 @@ def main(products):
         ],
 
         [
+            "Stock records",
+            len(stock_rows),
+        ],
+
+        [
             "Retailers scraped",
             len(
                 set(
@@ -755,7 +852,7 @@ if __name__ == "__main__":
     )
 
     print(
-        "BELKIN PRICE INTELLIGENCE"
+        "PRICE & STOCK INTELLIGENCE"
     )
 
     print(
