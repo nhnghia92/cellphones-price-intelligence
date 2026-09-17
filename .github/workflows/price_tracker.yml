@@ -25,4 +25,4 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
       
           MIN_CHANGE_PCT: ${{ vars.MIN_CHANGE_PCT }}
-        run: python tracker.py
+        run: python -u tracker.py
