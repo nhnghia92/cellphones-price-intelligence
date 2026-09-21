@@ -306,7 +306,7 @@ async def scrape_product(browser, product):
         }
     )
 
-    await page.set_default_timeout(5000)
+    page.set_default_timeout(5000)
 
     current_price = None
     stock_records = []
