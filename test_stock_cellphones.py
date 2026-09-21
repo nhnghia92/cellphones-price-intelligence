@@ -359,7 +359,7 @@ def get_stock_count(page, city):
     )
 
     out_pattern = re.compile(
-        r"TẠM HẾT HÀNG|tạm hết hàng tại",
+        r"TẠM HẾT HÀNG|tạm hết hàng tại|SẮP VỀ HÀNG",
         re.IGNORECASE,
     )
 
