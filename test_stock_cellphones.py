@@ -120,7 +120,6 @@ def select_city(page, city):
         )
 
         search.fill("")
-
         search.fill(city)
 
         page.wait_for_timeout(500)
@@ -175,6 +174,178 @@ def select_city(page, city):
         )
 
         return False
+
+
+def debug_stock_dom(page, city):
+    print("")
+    print(
+        "========================================"
+    )
+    print(
+        f"DEBUG STOCK DOM: {city}"
+    )
+    print(
+        "========================================"
+    )
+
+    try:
+        body_text = clean(
+            page.locator(
+                "body"
+            ).inner_text(
+                timeout=3000
+            )
+        )
+
+        keywords = [
+            "cửa hàng",
+            "sản phẩm",
+            "hết hàng",
+            "mua hàng",
+            "stock",
+            "inventory",
+            "chi nhánh",
+            "tại cửa hàng",
+        ]
+
+        lines = body_text.split(
+            "\n"
+        )
+
+        print(
+            "RELEVANT TEXT:"
+        )
+
+        found = False
+
+        for line in lines:
+            line = clean(line)
+
+            if not line:
+                continue
+
+            lower = line.lower()
+
+            if any(
+                keyword in lower
+                for keyword in keywords
+            ):
+                print(
+                    line[:500]
+                )
+                found = True
+
+        if not found:
+            print(
+                "No relevant stock text found."
+            )
+
+    except Exception as error:
+        print(
+            f"Could not read body: {error}"
+        )
+
+    try:
+        html = page.locator(
+            "body"
+        ).inner_html(
+            timeout=5000
+        )
+
+        patterns = [
+            r".{0,500}cửa hàng.{0,1000}",
+            r".{0,500}sản phẩm.{0,1000}",
+            r".{0,500}hết hàng.{0,1000}",
+        ]
+
+        print("")
+        print(
+            "HTML MATCHES:"
+        )
+
+        html_found = False
+
+        for pattern in patterns:
+            matches = re.findall(
+                pattern,
+                html,
+                re.IGNORECASE | re.DOTALL,
+            )
+
+            for match in matches[:5]:
+                text = clean(match)
+
+                print(
+                    text[:2000]
+                )
+
+                html_found = True
+
+        if not html_found:
+            print(
+                "No HTML matches found."
+            )
+
+    except Exception as error:
+        print(
+            f"Could not read HTML: {error}"
+        )
+
+    try:
+        stock_candidates = page.locator(
+            "[class*='stock'], "
+            "[class*='Stock'], "
+            "[class*='inventory'], "
+            "[class*='Inventory']"
+        )
+
+        count = stock_candidates.count()
+
+        print("")
+        print(
+            f"STOCK CLASS CANDIDATES: {count}"
+        )
+
+        for i in range(
+            min(count, 30)
+        ):
+            try:
+                element = (
+                    stock_candidates.nth(i)
+                )
+
+                text = clean(
+                    element.inner_text(
+                        timeout=1000
+                    )
+                )
+
+                classes = (
+                    element.get_attribute(
+                        "class"
+                    )
+                    or ""
+                )
+
+                if text:
+                    print(
+                        f"[{i}] "
+                        f"class={classes} "
+                        f"text={text[:500]}"
+                    )
+
+            except Exception:
+                continue
+
+    except Exception as error:
+        print(
+            f"Could not inspect "
+            f"stock classes: {error}"
+        )
+
+    print(
+        "========================================"
+    )
 
 
 def get_stock_count(page, city):
@@ -270,6 +441,11 @@ def get_stock_count(page, city):
     print(
         f"{city}: STOCK NOT FOUND "
         f"after {STOCK_TIMEOUT / 1000:.0f} seconds"
+    )
+
+    debug_stock_dom(
+        page,
+        city,
     )
 
     return None
