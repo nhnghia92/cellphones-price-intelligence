@@ -1,14 +1,7 @@
-
 import re
 
-from playwright.sync_api import (
-    sync_playwright,
-)
+from playwright.sync_api import sync_playwright
 
-
-# ============================================================
-# CONFIG
-# ============================================================
 
 PRODUCT_URL = (
     "https://cellphones.com.vn/"
@@ -27,58 +20,27 @@ PAGE_TIMEOUT = 30000
 STOCK_TIMEOUT = 15000
 
 
-# ============================================================
-# HELPERS
-# ============================================================
-
 def clean(text):
     if not text:
         return ""
 
-    return re.sub(
-        r"\s+",
-        " ",
-        text,
-    ).strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
-# ============================================================
-# PROVINCE MODAL
-# ============================================================
-
-def is_province_modal_open(page):
+def is_modal_open(page):
     try:
-        modal = page.locator(
+        return page.locator(
             "#change-province"
-        ).first
-
-        return modal.is_visible(
-            timeout=500
-        )
+        ).first.is_visible(timeout=500)
 
     except Exception:
         return False
 
 
 def open_province_modal(page):
-    """
-    Mở popup chọn tỉnh/thành phố.
-
-    Không scan toàn bộ DOM.
-    Chỉ thử các selector đã biết.
-    """
-
-    if is_province_modal_open(page):
-
-        print(
-            "Province modal already open."
-        )
-
+    if is_modal_open(page):
+        print("Province modal already open.")
         return True
-
-    print(
-        "Opening province modal..."
-    )
 
     selectors = [
         "text=Hồ Chí Minh",
@@ -89,57 +51,57 @@ def open_province_modal(page):
         "text=Chọn tỉnh",
     ]
 
-    for selector in selectors:
+    for attempt in range(5):
+        print(
+            f"Opening province modal... "
+            f"attempt {attempt + 1}/5"
+        )
 
-        try:
+        for selector in selectors:
+            try:
+                locator = page.locator(
+                    selector
+                )
 
-            locator = page.locator(
-                selector
-            ).first
+                count = locator.count()
 
-            locator.wait_for(
-                state="visible",
-                timeout=1200,
-            )
+                for i in range(min(count, 10)):
+                    element = locator.nth(i)
 
-            locator.click(
-                timeout=2500
-            )
+                    try:
+                        if not element.is_visible(
+                            timeout=500
+                        ):
+                            continue
 
-            # Chờ popup thật sự mở
-            page.locator(
-                "#change-province"
-            ).wait_for(
-                state="visible",
-                timeout=2500,
-            )
+                        element.evaluate(
+                            "(el) => el.click()"
+                        )
 
-            print(
-                "Province modal opened."
-            )
+                        page.wait_for_timeout(500)
 
-            return True
+                        if is_modal_open(page):
+                            print(
+                                "Province modal opened."
+                            )
+                            return True
 
-        except Exception:
-            continue
+                    except Exception:
+                        continue
+
+            except Exception:
+                continue
+
+        page.wait_for_timeout(1000)
 
     print(
-        "WARNING: Could not open "
-        "province modal."
+        "WARNING: Could not open province modal."
     )
 
     return False
 
 
-# ============================================================
-# SELECT CITY
-# ============================================================
-
 def select_city(page, city):
-    """
-    Chọn một tỉnh/thành phố.
-    """
-
     if not open_province_modal(page):
         return False
 
@@ -147,37 +109,26 @@ def select_city(page, city):
         f"Searching province: {city}"
     )
 
-    # --------------------------------------------------------
-    # Search box
-    # --------------------------------------------------------
-
     try:
-
         search = page.locator(
-            "#change-province "
             "#inputSearchProvince input"
         ).first
 
         search.wait_for(
             state="visible",
-            timeout=2000,
+            timeout=3000,
         )
 
         search.fill("")
 
         search.fill(city)
 
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(500)
 
     except Exception as error:
-
         print(
             f"Search input error: {error}"
         )
-
-    # --------------------------------------------------------
-    # City
-    # --------------------------------------------------------
 
     city_locator = page.locator(
         "#change-province li a"
@@ -186,7 +137,6 @@ def select_city(page, city):
     )
 
     try:
-
         count = city_locator.count()
 
         print(
@@ -195,171 +145,57 @@ def select_city(page, city):
         )
 
         if count == 0:
-
             print(
-                f"Province not found: "
-                f"{city}"
+                f"Province not found: {city}"
             )
-
             return False
 
         city_link = city_locator.first
 
         city_link.wait_for(
             state="visible",
-            timeout=2000,
+            timeout=3000,
         )
 
-        city_link.click(
-            timeout=5000
+        city_link.evaluate(
+            "(el) => el.click()"
         )
 
         print(
             f"{city} clicked."
         )
 
+        page.wait_for_timeout(500)
+
         return True
 
     except Exception as error:
-
         print(
-            f"Could not click "
-            f"{city}: {error}"
+            f"Could not click {city}: {error}"
         )
 
         return False
 
 
-# ============================================================
-# STOCK PARSER
-# ============================================================
-
-def parse_stock_text(text):
-    """
-    Trả về:
-
-        (stock, status)
-
-    Ví dụ:
-
-        Có 1 cửa hàng có sản phẩm
-        -> (1, "IN_STOCK")
-
-        Có 18 cửa hàng có sản phẩm
-        -> (18, "IN_STOCK")
-
-        TẠM HẾT HÀNG
-        -> (0, "OUT_OF_STOCK")
-
-        Không tìm thấy
-        -> (None, "UNKNOWN")
-    """
-
-    if not text:
-        return (
-            None,
-            "UNKNOWN",
-        )
-
-    # --------------------------------------------------------
-    # IN STOCK
-    # --------------------------------------------------------
+def get_stock_count(page, city):
+    print(
+        f"Checking stock for {city}..."
+    )
 
     stock_pattern = re.compile(
         r"Có\s+(\d+)\s+cửa hàng\s+có sản phẩm",
         re.IGNORECASE,
     )
 
-    match = stock_pattern.search(
-        text
-    )
-
-    if match:
-
-        stock = int(
-            match.group(1)
-        )
-
-        if stock > 0:
-
-            return (
-                stock,
-                "IN_STOCK",
-            )
-
-        return (
-            0,
-            "OUT_OF_STOCK",
-        )
-
-    # --------------------------------------------------------
-    # OUT OF STOCK
-    # --------------------------------------------------------
-
     out_pattern = re.compile(
-        r"TẠM HẾT HÀNG|"
-        r"tạm hết hàng tại",
+        r"TẠM HẾT HÀNG|tạm hết hàng tại",
         re.IGNORECASE,
     )
 
-    if out_pattern.search(text):
+    attempts = STOCK_TIMEOUT // 300
 
-        return (
-            0,
-            "OUT_OF_STOCK",
-        )
-
-    return (
-        None,
-        "UNKNOWN",
-    )
-
-
-# ============================================================
-# GET STOCK
-# ============================================================
-
-def get_stock_count(page, city):
-    """
-    Chờ CellphoneS cập nhật stock.
-
-    Không dùng wait cố định.
-
-    Kiểm tra mỗi 300ms trong tối đa
-    15 giây.
-
-    UNKNOWN không được coi là OUT_OF_STOCK.
-    """
-
-    print(
-        f"Checking stock for {city}..."
-    )
-
-    # --------------------------------------------------------
-    # IMPORTANT
-    #
-    # Sau khi click city, CellphoneS có thể
-    # cập nhật DOM bất đồng bộ.
-    #
-    # Vì vậy không đọc một lần rồi kết luận.
-    # --------------------------------------------------------
-
-    for _ in range(
-        STOCK_TIMEOUT // 300
-    ):
-
-        # ====================================================
-        # 1. Tìm trực tiếp text stock
-        # ====================================================
-
+    for _ in range(attempts):
         try:
-
-            stock_pattern = re.compile(
-                r"Có\s+(\d+)\s+"
-                r"cửa hàng\s+có sản phẩm",
-                re.IGNORECASE,
-            )
-
             stock_locator = page.get_by_text(
                 stock_pattern
             )
@@ -367,14 +203,9 @@ def get_stock_count(page, city):
             count = stock_locator.count()
 
             if count > 0:
-
                 for i in range(count):
-
                     try:
-
-                        element = (
-                            stock_locator.nth(i)
-                        )
+                        element = stock_locator.nth(i)
 
                         if not element.is_visible(
                             timeout=300
@@ -385,14 +216,11 @@ def get_stock_count(page, city):
                             element.inner_text()
                         )
 
-                        match = (
-                            stock_pattern.search(
-                                text
-                            )
+                        match = stock_pattern.search(
+                            text
                         )
 
                         if match:
-
                             stock = int(
                                 match.group(1)
                             )
@@ -416,12 +244,7 @@ def get_stock_count(page, city):
         except Exception:
             pass
 
-        # ====================================================
-        # 2. Tìm trạng thái hết hàng
-        # ====================================================
-
         try:
-
             body_text = clean(
                 page.locator(
                     "body"
@@ -430,18 +253,11 @@ def get_stock_count(page, city):
                 )
             )
 
-            lower_text = body_text.lower()
-
-            if (
-                "tạm hết hàng" in lower_text
-                or
-                "tạm hết hàng tại"
-                in lower_text
+            if out_pattern.search(
+                body_text
             ):
-
                 print(
-                    f"{city}: "
-                    "TẠM HẾT HÀNG"
+                    f"{city}: TẠM HẾT HÀNG"
                 )
 
                 return 0
@@ -449,17 +265,7 @@ def get_stock_count(page, city):
         except Exception:
             pass
 
-        # ====================================================
-        # 3. Chờ 300ms rồi kiểm tra lại
-        # ====================================================
-
-        page.wait_for_timeout(
-            300
-        )
-
-    # ========================================================
-    # UNKNOWN
-    # ========================================================
+        page.wait_for_timeout(300)
 
     print(
         f"{city}: STOCK NOT FOUND "
@@ -469,12 +275,7 @@ def get_stock_count(page, city):
     return None
 
 
-# ============================================================
-# TEST ONE CITY
-# ============================================================
-
 def test_city(page, city):
-
     print("")
     print(
         "========================================"
@@ -492,27 +293,18 @@ def test_city(page, city):
     )
 
     if not selected:
-
         print(
             f"{city}: FAILED TO SELECT"
         )
-
         return None
 
-    stock = get_stock_count(
+    return get_stock_count(
         page,
         city,
     )
 
-    return stock
-
-
-# ============================================================
-# MAIN
-# ============================================================
 
 def main():
-
     print("")
     print(
         "========================================"
@@ -527,11 +319,6 @@ def main():
     results = {}
 
     with sync_playwright() as playwright:
-
-        # ----------------------------------------------------
-        # Browser
-        # ----------------------------------------------------
-
         browser = playwright.chromium.launch(
             headless=True
         )
@@ -543,17 +330,11 @@ def main():
             }
         )
 
-        page.set_default_timeout(
-            5000
-        )
+        page.set_default_timeout(5000)
 
         print(
             "Opening product..."
         )
-
-        # ----------------------------------------------------
-        # Open product
-        # ----------------------------------------------------
 
         page.goto(
             PRODUCT_URL,
@@ -561,42 +342,24 @@ def main():
             timeout=PAGE_TIMEOUT,
         )
 
-        # Chỉ chờ body render.
-        # Không hard-code 5 giây.
-        try:
-
-            page.locator(
-                "body"
-            ).wait_for(
-                state="visible",
-                timeout=10000,
-            )
-
-        except Exception:
-            pass
+        page.locator(
+            "body"
+        ).wait_for(
+            state="visible",
+            timeout=10000,
+        )
 
         print(
             "Product loaded."
         )
 
-        # ----------------------------------------------------
-        # Test all cities
-        # ----------------------------------------------------
-
         for city in CITIES:
-
-            stock = test_city(
+            results[city] = test_city(
                 page,
                 city,
             )
 
-            results[city] = stock
-
         browser.close()
-
-    # ========================================================
-    # FINAL RESULT
-    # ========================================================
 
     print("")
     print(
@@ -610,19 +373,13 @@ def main():
     )
 
     for city in CITIES:
-
-        stock = results.get(
-            city
-        )
+        stock = results.get(city)
 
         if stock is None:
-
             print(
                 f"{city}: NOT FOUND"
             )
-
         else:
-
             print(
                 f"{city}: {stock}"
             )
@@ -638,10 +395,5 @@ def main():
     )
 
 
-# ============================================================
-# ENTRY POINT
-# ============================================================
-
 if __name__ == "__main__":
     main()
-
