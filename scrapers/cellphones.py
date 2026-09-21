@@ -2,8 +2,7 @@ import asyncio
 import re
 from datetime import datetime, timezone
 
-from playwright.async_api import async_playwright
-
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
 RETAILER_ID = "RET_005"
 
@@ -14,8 +13,7 @@ CITIES = [
     "Đà Nẵng",
 ]
 
-PAGE_TIMEOUT = 30000
-ELEMENT_TIMEOUT = 5000
+PAGE_TIMEOUT = 45000
 STOCK_TIMEOUT = 15000
 
 
@@ -25,557 +23,352 @@ def parse_price(text):
 
     text = text.replace(".", "").replace(",", "")
 
-    matches = re.findall(
-        r"(\d{4,9})\s*[đ₫]",
-        text
-    )
+    matches = re.findall(r"(\d{5,8})\s*[đ₫]", text)
 
-    prices = []
+    if not matches:
+        matches = re.findall(r"(\d{5,8})", text)
 
-    for value in matches:
-        price = int(value)
+    if not matches:
+        return None
 
-        if price >= 10000:
-            prices.append(price)
+    values = [int(x) for x in matches if 50000 <= int(x) <= 100000000]
 
-    return prices
+    if not values:
+        return None
 
-
-def extract_prices(text):
-    prices = parse_price(text)
-
-    if not prices:
-        return None, None
-
-    current_price = prices[0]
-    original_price = None
-
-    for price in prices[1:]:
-        if price >= current_price:
-            original_price = price
-            break
-
-    return current_price, original_price
-
-
-def now_iso():
-    return datetime.now(
-        timezone.utc
-    ).isoformat()
-
-
-async def is_modal_open(page):
-    try:
-        modal = page.locator(
-            "#change-province"
-        ).first
-
-        return await modal.is_visible(
-            timeout=500
-        )
-
-    except Exception:
-        return False
-
-
-async def wait_for_page_ready(page):
-    try:
-        await page.locator(
-            "body"
-        ).wait_for(
-            state="visible",
-            timeout=ELEMENT_TIMEOUT,
-        )
-    except Exception:
-        pass
-
-    selectors = [
-        "#change-province",
-        "#inputSearchProvince",
-        "body",
-    ]
-
-    for selector in selectors:
-        try:
-            await page.locator(
-                selector
-            ).first.wait_for(
-                state="visible",
-                timeout=ELEMENT_TIMEOUT,
-            )
-
-            return True
-
-        except Exception:
-            continue
-
-    return False
-
-
-async def open_province_modal(page):
-    if await is_modal_open(page):
-        return True
-
-    selectors = [
-        "text=Hồ Chí Minh",
-        "text=Chọn khu vực",
-        "text=Chọn tỉnh",
-    ]
-
-    for attempt in range(5):
-        print(
-            f"Opening province modal... attempt {attempt + 1}/5"
-        )
-
-        for selector in selectors:
-            try:
-                locator = page.locator(
-                    selector
-                ).first
-
-                await locator.wait_for(
-                    state="visible",
-                    timeout=1500,
-                )
-
-                try:
-                    await locator.click(
-                        timeout=2500
-                    )
-                except Exception:
-                    await locator.evaluate(
-                        "(el) => el.click()"
-                    )
-
-                try:
-                    await page.locator(
-                        "#change-province"
-                    ).wait_for(
-                        state="visible",
-                        timeout=2500,
-                    )
-
-                    print(
-                        "Province modal opened."
-                    )
-
-                    return True
-
-                except Exception:
-                    continue
-
-            except Exception:
-                continue
-
-    return False
-
-
-async def select_city(page, city):
-    if not await is_modal_open(page):
-        opened = await open_province_modal(
-            page
-        )
-
-        if not opened:
-            print(
-                f"WARNING: Could not open province modal for {city}"
-            )
-
-            return False
-
-    try:
-        search = page.locator(
-            "#inputSearchProvince input"
-        ).first
-
-        await search.wait_for(
-            state="visible",
-            timeout=3000,
-        )
-
-        await search.fill(city)
-
-        await asyncio.sleep(0.15)
-
-    except Exception as e:
-        print(
-            f"WARNING: Province search failed for {city}: {e}"
-        )
-
-        return False
-
-    city_links = page.locator(
-        "#change-province li a",
-        has_text=city,
-    )
-
-    try:
-        count = await city_links.count()
-
-        print(
-            f"{city} elements in modal: {count}"
-        )
-
-        if count == 0:
-            print(
-                f"WARNING: City not found: {city}"
-            )
-
-            return False
-
-        city_link = city_links.first
-
-        await city_link.wait_for(
-            state="visible",
-            timeout=3000,
-        )
-
-        try:
-            await city_link.click(
-                timeout=2500
-            )
-        except Exception:
-            await city_link.evaluate(
-                "(el) => el.click()"
-            )
-
-        print(
-            f"{city} clicked."
-        )
-
-        await asyncio.sleep(0.2)
-
-        return True
-
-    except Exception as e:
-        print(
-            f"WARNING: Could not click {city}: {e}"
-        )
-
-        return False
+    return values[0]
 
 
 def parse_stock_text(text):
     if not text:
-        return None, "UNKNOWN"
+        return {
+            "stock": 0,
+            "stock_status": "UNKNOWN"
+        }
 
-    lower = text.lower()
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
 
-    if (
-        "tạm hết hàng" in lower
-        or "sắp về hàng" in lower
-    ):
-        return 0, "OUT_OF_STOCK"
+    if "tạm hết hàng" in normalized:
+        return {
+            "stock": 0,
+            "stock_status": "OUT_OF_STOCK"
+        }
+
+    if "sắp về hàng" in normalized:
+        return {
+            "stock": 0,
+            "stock_status": "OUT_OF_STOCK"
+        }
 
     match = re.search(
-        r"Có\s+(\d+)\s+cửa hàng\s+có sản phẩm",
-        text,
-        re.IGNORECASE,
+        r"có\s+(\d+)\s+cửa hàng\s+có\s+sản phẩm",
+        normalized
     )
 
     if match:
-        stock = int(
-            match.group(1)
+        count = int(match.group(1))
+
+        return {
+            "stock": count,
+            "stock_status": "IN_STOCK" if count > 0 else "OUT_OF_STOCK"
+        }
+
+    return {
+        "stock": 0,
+        "stock_status": "UNKNOWN"
+    }
+
+
+async def wait_for_page_ready(page):
+    try:
+        await page.wait_for_load_state("domcontentloaded", timeout=PAGE_TIMEOUT)
+    except PlaywrightTimeoutError:
+        pass
+
+    await page.wait_for_timeout(1500)
+
+
+async def open_province_modal(page):
+    button = page.locator("#change-province")
+
+    try:
+        await button.wait_for(state="visible", timeout=10000)
+    except PlaywrightTimeoutError:
+        return False
+
+    try:
+        await button.click(timeout=5000)
+    except Exception:
+        try:
+            await button.evaluate("(el) => el.click()")
+        except Exception:
+            return False
+
+    try:
+        await page.locator("#inputSearchProvince input").wait_for(
+            state="visible",
+            timeout=5000
+        )
+        return True
+    except PlaywrightTimeoutError:
+        return False
+
+
+async def select_city(page, city):
+    if not await open_province_modal(page):
+        return False
+
+    search_input = page.locator("#inputSearchProvince input")
+
+    try:
+        await search_input.fill(city)
+        await page.wait_for_timeout(500)
+    except Exception:
+        return False
+
+    city_locator = page.locator(
+        "#change-province li a"
+    ).filter(has_text=city).first
+
+    try:
+        count = await city_locator.count()
+
+        if count == 0:
+            return False
+
+        await city_locator.wait_for(
+            state="visible",
+            timeout=5000
         )
 
-        if stock > 0:
-            return stock, "IN_STOCK"
+        await city_locator.evaluate("(el) => el.click()")
 
-        return 0, "OUT_OF_STOCK"
+    except Exception:
+        return False
 
-    return None, "UNKNOWN"
+    await page.wait_for_timeout(2000)
+
+    return True
 
 
-async def wait_for_stock(page, city):
-    loop = asyncio.get_running_loop()
+async def get_stock_state(page, city):
+    selectors = [
+        "text=TẠM HẾT HÀNG",
+        "text=SẮP VỀ HÀNG",
+        "text=/Có \\d+ cửa hàng có sản phẩm/"
+    ]
 
-    deadline = (
-        loop.time()
-        + STOCK_TIMEOUT / 1000
-    )
-
-    while loop.time() < deadline:
+    for selector in selectors:
         try:
-            body_text = await page.locator(
-                "body"
-            ).inner_text(
-                timeout=2000
-            )
+            locator = page.locator(selector).first
 
-            stock, status = parse_stock_text(
-                body_text
-            )
+            if await locator.count() > 0:
+                try:
+                    text = await locator.inner_text(timeout=3000)
+                except Exception:
+                    text = await locator.text_content(timeout=3000)
 
-            if stock is not None:
-                return stock, status
+                result = parse_stock_text(text)
+
+                if result["stock_status"] != "UNKNOWN":
+                    return result
 
         except Exception:
             pass
 
-        await asyncio.sleep(
-            0.25
-        )
+    deadline = asyncio.get_running_loop().time() + STOCK_TIMEOUT / 1000
 
-    print(
-        f"WARNING: Stock not detected for {city}"
-    )
+    while asyncio.get_running_loop().time() < deadline:
+        try:
+            body_text = await page.locator("body").inner_text(timeout=3000)
 
-    return None, "UNKNOWN"
+            result = parse_stock_text(body_text)
 
+            if result["stock_status"] != "UNKNOWN":
+                return result
 
-def build_stock_record(
-    product,
-    city,
-    stock,
-    status,
-):
+        except Exception:
+            pass
+
+        await page.wait_for_timeout(1000)
+
     return {
-        "timestamp": now_iso(),
-        "retailer_id": RETAILER_ID,
-        "brand": product["brand"],
-        "product_id": product["product_id"],
-        "product_name": product["product_name"],
-        "city": city,
-        "stock": stock,
-        "stock_status": status,
-        "url": product["url"],
+        "stock": 0,
+        "stock_status": "UNKNOWN"
     }
 
 
-async def scrape_city(
-    page,
-    product,
-    city,
-):
-    product_id = product["product_id"]
+async def scrape_city(browser, product, city):
+    page = await browser.new_page()
 
     try:
-        print(
-            f"[{city}] Checking {product_id}"
+        print(f"[{city}] Checking {product['product_id']}")
+
+        await page.goto(
+            product["url"],
+            wait_until="domcontentloaded",
+            timeout=PAGE_TIMEOUT
         )
 
-        selected = await select_city(
-            page,
-            city,
-        )
+        await wait_for_page_ready(page)
+
+        selected = await select_city(page, city)
 
         if not selected:
-            return build_stock_record(
-                product,
-                city,
-                None,
-                "UNKNOWN",
-            )
+            print(f"{city}: FAILED_TO_SELECT_CITY")
 
-        print(
-            f"Checking stock for {city}..."
-        )
+            return {
+                "city": city,
+                "stock": 0,
+                "stock_status": "UNKNOWN"
+            }
 
-        stock, status = await wait_for_stock(
-            page,
-            city,
-        )
+        print(f"Checking stock for {city}...")
 
-        if status == "OUT_OF_STOCK":
+        stock = await get_stock_state(page, city)
+
+        if stock["stock_status"] == "IN_STOCK":
             print(
-                f"{city}: TẠM HẾT HÀNG"
+                f"{city}: {stock['stock']} cửa hàng có sản phẩm"
             )
-
-        elif status == "IN_STOCK":
-            print(
-                f"{city}: {stock} cửa hàng có sản phẩm"
-            )
-
+        elif stock["stock_status"] == "OUT_OF_STOCK":
+            print(f"{city}: OUT_OF_STOCK")
         else:
-            print(
-                f"{city}: STOCK UNKNOWN"
-            )
+            print(f"{city}: UNKNOWN")
 
-        return build_stock_record(
-            product,
-            city,
-            stock,
-            status,
+        return {
+            "city": city,
+            "stock": stock["stock"],
+            "stock_status": stock["stock_status"]
+        }
+
+    except Exception as e:
+        print(f"{city}: ERROR - {type(e).__name__}: {e}")
+
+        return {
+            "city": city,
+            "stock": 0,
+            "stock_status": "UNKNOWN"
+        }
+
+    finally:
+        await page.close()
+
+
+async def scrape_product(browser, product):
+    print("")
+    print(f"SCRAPING CellphoneS: {product['product_id']}")
+
+    price_page = await browser.new_page()
+
+    current_price = None
+    original_price = None
+
+    try:
+        await price_page.goto(
+            product["url"],
+            wait_until="domcontentloaded",
+            timeout=PAGE_TIMEOUT
         )
+
+        await wait_for_page_ready(price_page)
+
+        body_text = await price_page.locator("body").inner_text()
+
+        current_price = parse_price(body_text)
+
+        if current_price is None:
+            print(
+                f"WARNING {product['product_id']}: price not found"
+            )
 
     except Exception as e:
         print(
-            f"[{city}] ERROR {product_id}: {e}"
+            f"WARNING {product['product_id']}: price error - "
+            f"{type(e).__name__}: {e}"
         )
 
-        return build_stock_record(
-            product,
-            city,
-            None,
-            "UNKNOWN",
-        )
-
-
-async def scrape_product(
-    page,
-    product,
-):
-    product_id = product["product_id"]
-    url = product["url"]
-
-    await page.goto(
-        url,
-        wait_until="domcontentloaded",
-        timeout=PAGE_TIMEOUT,
-    )
-
-    await wait_for_page_ready(
-        page
-    )
-
-    text = await page.locator(
-        "body"
-    ).inner_text()
-
-    current_price, original_price = extract_prices(
-        text
-    )
-
-    discount_pct = None
-
-    if (
-        original_price
-        and original_price > current_price
-    ):
-        discount_pct = round(
-            (
-                (
-                    original_price
-                    - current_price
-                )
-                / original_price
-            )
-            * 100,
-            2,
-        )
+    finally:
+        await price_page.close()
 
     stock_records = []
 
     for city in CITIES:
-        if city != CITIES[0]:
-            await open_province_modal(
-                page
-            )
-
-        stock_record = await scrape_city(
-            page,
+        record = await scrape_city(
+            browser,
             product,
-            city,
+            city
         )
 
-        stock_records.append(
-            stock_record
-        )
+        stock_records.append(record)
 
-    if current_price is not None:
-        print(
-            f"SUCCESS {product_id}: {current_price:,}đ"
-        )
-    else:
-        print(
-            f"WARNING {product_id}: Price not found"
-        )
+    timestamp = datetime.now(
+        timezone.utc
+    ).isoformat()
 
-    return {
-        "timestamp": now_iso(),
+    result = {
+        "timestamp": timestamp,
         "retailer_id": RETAILER_ID,
         "brand": product["brand"],
         "product_id": product["product_id"],
         "product_name": product["product_name"],
         "price": current_price,
         "original_price": original_price or "",
-        "discount_pct": discount_pct,
+        "discount_pct": "",
         "stock_status": "UNKNOWN",
         "promotion": "",
-        "url": url,
+        "url": product["url"],
         "stock_records": stock_records,
     }
 
+    print(
+        f"SUCCESS {product['product_id']}: "
+        f"{current_price:,}đ"
+        if current_price
+        else f"SUCCESS {product['product_id']}: price UNKNOWN"
+    )
+
+    print(f"Stock records: {len(stock_records)}")
+
+    return result
+
 
 async def scrape_async(products):
+    print("")
+    print("========================================")
+    print("CELLPHONES SCRAPER")
+    print("========================================")
+    print(f"Products: {len(products)}")
+    print(f"Cities: {len(CITIES)}")
+    print("Mode: 1 browser + fresh page per city")
+    print("")
+
     results = []
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
-            headless=True
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ]
         )
 
-        page = await browser.new_page(
-            viewport={
-                "width": 1440,
-                "height": 900,
-            }
-        )
-
-        print(
-            "Created single CellphoneS tab"
-        )
-
-        for product in products:
-            product_id = product["product_id"]
-
-            print("")
-            print(
-                "========================================"
-            )
-            print(
-                f"SCRAPING CellphoneS: {product_id}"
-            )
-            print(
-                "========================================"
-            )
-
-            try:
+        try:
+            for product in products:
                 result = await scrape_product(
-                    page,
-                    product,
+                    browser,
+                    product
                 )
 
-                results.append(
-                    result
-                )
+                results.append(result)
 
-                print(
-                    f"Stock records: "
-                    f"{len(result['stock_records'])}"
-                )
-
-            except Exception as e:
-                print(
-                    f"ERROR {product_id}: {e}"
-                )
-
-        await browser.close()
+        finally:
+            await browser.close()
 
     return results
 
 
 def scrape(products):
-    print("")
-    print(
-        "========================================"
-    )
-    print(
-        "CELLPHONES PRICE + STOCK SCRAPER"
-    )
-    print(
-        "========================================"
-    )
-    print(
-        f"Products: {len(products)}"
-    )
-    print(
-        f"Cities: {len(CITIES)}"
-    )
-    print(
-        "Mode: 1 browser + 1 tab"
-    )
-
-    return asyncio.run(
-        scrape_async(products)
-    )
+    return asyncio.run(scrape_async(products))
