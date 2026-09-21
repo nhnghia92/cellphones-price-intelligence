@@ -1,4 +1,4 @@
-```python
+
 import asyncio
 import re
 from datetime import datetime, timezone
@@ -728,4 +728,3 @@ def scrape(products):
     )
 
     return results
-```
