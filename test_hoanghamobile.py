@@ -6,7 +6,7 @@ PRODUCTS = [
         "brand": "Belkin",
         "product_id": "WCA013",
         "product_name": "Belkin 45W Charger",
-        "url": "URL_HOANG_HA_CUA_NIC",
+        "url": "https://hoanghamobile.com/cu-sac/cu-sac-nhanh-belkin-45w-1-cong-usb-c-pd-3-0-pps-gann",
     },
 ]
 
