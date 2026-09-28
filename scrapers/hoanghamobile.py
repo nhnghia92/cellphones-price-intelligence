@@ -1,4 +1,3 @@
-import json
 import re
 import time
 from datetime import datetime, timezone
@@ -60,12 +59,45 @@ def extract_prices(text):
     return current_price, original_price
 
 
-def get_stock_by_city(page):
-    result = {
-        city: {
-            "status": "OUT_OF_STOCK",
-            "stock_count": 0,
-        }
+def normalize_city(address):
+    text = address.lower().strip()
+
+    city_aliases = {
+        "Hồ Chí Minh": [
+            "hồ chí minh",
+            "ho chi minh",
+            "tp.hcm",
+            "tp. hcm",
+            "tp hcm",
+            "tphcm",
+            "tp.hồ chí minh",
+            "tp. hồ chí minh",
+        ],
+        "Hà Nội": [
+            "hà nội",
+            "ha noi",
+        ],
+        "Đà Nẵng": [
+            "đà nẵng",
+            "da nang",
+        ],
+        "Cần Thơ": [
+            "cần thơ",
+            "can tho",
+        ],
+    }
+
+    for city, aliases in city_aliases.items():
+        for alias in aliases:
+            if alias in text:
+                return city
+
+    return None
+
+
+def get_stock_records(page):
+    stock_counts = {
+        city: 0
         for city in TARGET_CITIES
     }
 
@@ -75,7 +107,9 @@ def get_stock_by_city(page):
 
     count = addresses.count()
 
-    print(f"Hoàng Hà available store addresses: {count}")
+    print(
+        f"Hoàng Hà available store addresses: {count}"
+    )
 
     for i in range(count):
         try:
@@ -86,29 +120,44 @@ def get_stock_by_city(page):
         if not address:
             continue
 
-        for city in TARGET_CITIES:
-            if city.lower() in address.lower():
-                result[city]["stock_count"] += 1
-                result[city]["status"] = "IN_STOCK"
+        city = normalize_city(address)
+
+        if city:
+            stock_counts[city] += 1
+
+    stock_records = []
 
     for city in TARGET_CITIES:
-        status = result[city]["status"]
-        stock_count = result[city]["stock_count"]
+        stock = stock_counts[city]
+
+        if stock > 0:
+            stock_status = "IN_STOCK"
+        else:
+            stock_status = "OUT_OF_STOCK"
+
+        stock_records.append({
+            "city": city,
+            "stock": stock,
+            "stock_status": stock_status,
+        })
 
         print(
             f"Stock {city}: "
-            f"{status} "
-            f"({stock_count})"
+            f"{stock_status} "
+            f"({stock})"
         )
 
-    return result
+    return stock_records
 
 
 def scrape_product(page, product):
     url = product["url"]
 
     try:
-        print(f"Opening Hoàng Hà URL: {product['product_id']}")
+        print(
+            f"Opening Hoàng Hà URL: "
+            f"{product['product_id']}"
+        )
 
         page.goto(
             url,
@@ -121,29 +170,34 @@ def scrape_product(page, product):
         text = page.locator("body").inner_text()
 
         if not text:
-            print(f"SKIP {product['product_id']}: empty page")
+            print(
+                f"SKIP {product['product_id']}: "
+                "empty page"
+            )
             return None
 
         if "belkin" not in text.lower():
             print(
                 f"WARNING {product['product_id']}: "
-                f"Belkin not found on page"
+                "Belkin not found on page"
             )
 
-        current_price, original_price = extract_prices(text)
+        current_price, original_price = (
+            extract_prices(text)
+        )
 
         if current_price is None:
             print(
                 f"SKIP {product['product_id']}: "
-                f"price not found"
+                "price not found"
             )
             return None
 
-        stock_by_city = get_stock_by_city(page)
+        stock_records = get_stock_records(page)
 
         total_stock = sum(
-            item["stock_count"]
-            for item in stock_by_city.values()
+            record["stock"]
+            for record in stock_records
         )
 
         if total_stock > 0:
@@ -153,40 +207,68 @@ def scrape_product(page, product):
 
         discount_pct = None
 
-        if original_price and original_price > current_price:
+        if (
+            original_price
+            and original_price > current_price
+        ):
             discount_pct = round(
                 (
-                    (original_price - current_price)
+                    (
+                        original_price
+                        - current_price
+                    )
                     / original_price
-                ) * 100,
+                )
+                * 100,
                 2,
             )
 
         result = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(
+                timezone.utc
+            ).isoformat(),
+
             "retailer_id": RETAILER_ID,
-            "brand": product["brand"],
-            "product_id": product["product_id"],
-            "product_name": product["product_name"],
+
+            "brand": product.get(
+                "brand",
+                "",
+            ),
+
+            "product_id": product.get(
+                "product_id",
+                "",
+            ),
+
+            "product_name": product.get(
+                "product_name",
+                "",
+            ),
+
             "price": current_price,
-            "original_price": original_price or "",
+
+            "original_price": (
+                original_price
+                if original_price is not None
+                else ""
+            ),
+
             "discount_pct": (
                 discount_pct
                 if discount_pct is not None
                 else ""
             ),
-            "stock_status": stock_status,
-            "stock_count": total_stock,
-            "stock_by_city": json.dumps(
-                stock_by_city,
-                ensure_ascii=False,
-            ),
+
             "promotion": "",
+
             "url": url,
+
+            "stock_records": stock_records,
         }
 
         print(
-            f"SUCCESS {product['product_id']}: "
+            f"SUCCESS "
+            f"{product['product_id']}: "
             f"{current_price:,}đ"
         )
 
@@ -198,18 +280,26 @@ def scrape_product(page, product):
 
         if discount_pct is not None:
             print(
-                f"Discount: {discount_pct}%"
+                f"Discount: "
+                f"{discount_pct}%"
             )
 
-        print(f"Stock: {stock_status}")
-        print(f"Total stock: {total_stock}")
         print(
-            "Stock by city: "
-            + json.dumps(
-                stock_by_city,
-                ensure_ascii=False,
-            )
+            f"Stock: "
+            f"{stock_status}"
         )
+
+        print(
+            f"Total stock: "
+            f"{total_stock}"
+        )
+
+        for record in stock_records:
+            print(
+                f"  {record['city']}: "
+                f"{record['stock_status']} "
+                f"({record['stock']})"
+            )
 
         return result
 
@@ -218,6 +308,7 @@ def scrape_product(page, product):
             f"Hoàng Hà error "
             f"{product['product_id']}: {e}"
         )
+
         return None
 
 
@@ -225,7 +316,9 @@ def scrape(products):
     results = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True
+        )
 
         page = browser.new_page(
             viewport={
