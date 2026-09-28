@@ -24,4 +24,25 @@ jobs:
 
       - name: Run Hoang Ha scraper
         run: |
-          python test_hoanghamobile.py
+          python - <<'PY'
+          from scrapers.hoanghamobile import scrape
+
+          products = [
+              {
+                  "brand": "Belkin",
+                  "product_id": "WCA013",
+                  "product_name": "Belkin 45W Charger",
+                  "url": "https://hoanghamobile.com/cu-sac/cu-sac-nhanh-belkin-45w-1-cong-usb-c-pd-3-0-pps-gann",
+              }
+          ]
+
+          results = scrape(products)
+
+          print("")
+          print("========== FINAL RESULTS ==========")
+
+          for result in results:
+              print(result)
+
+          print("===================================")
+          PY
